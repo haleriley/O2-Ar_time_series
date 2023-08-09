@@ -616,11 +616,14 @@ save(list = c('combined.gbm', 'full.gbm'), file = '20230808_model.Rdata')
 
 # ---- apply model to miniDot timeseries ----
 
+combined.df <- readRDS("2023-08-08_combined_env_data_hourly.rds")
 load(file = "20230808_model.Rdata")
 
 full.predictors <- na.omit(combined.df[,c(full.gbm$var.names, 'Date.Time')])
 
-full.aop.corrected <- predict(full.gbm, full.predictors)
+full.predictors$aop.corrected <- predict(full.gbm, full.predictors)
+
+saveRDS(full.predictors, "2023-08-08_aop_cor_df.rds")
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
