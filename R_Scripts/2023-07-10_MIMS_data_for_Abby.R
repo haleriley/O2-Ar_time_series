@@ -1,7 +1,7 @@
 
 getwd()
-setwd('C://Users/haler/Documents/PhD-Bowman/MIMS-miniDOT_O2-Ar_Study/R_Data/') # set to whatever wd you want
-set.seed(1234) # makes random results reproduceable 
+setwd('C://Users/haler/Documents/PhD-Bowman/MIMS_O2-Ar_time_series/R_Data/') # set to whatever wd you want
+set.seed(1234) # makes random results reproduceable   
 
 
 # ---- library ----
