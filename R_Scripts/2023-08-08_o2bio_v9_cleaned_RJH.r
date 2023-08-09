@@ -2,7 +2,7 @@
 ## based on existing calibrations, then base the model only on timepoints where
 ## the mims and miniDOT O2 values agree
 getwd()
-setwd('C://Users/haler/Documents/PhD-Bowman/MIMS_O2-Ar_time_series/R_Data/')
+setwd('C://Users/haler/Documents/PhD-Bowman/O2-Ar_time_series/R_Data/')
 set.seed(1234)
 
 
