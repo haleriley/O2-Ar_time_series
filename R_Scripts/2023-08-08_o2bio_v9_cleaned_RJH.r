@@ -327,6 +327,11 @@ combined.df.select <- na.omit(combined.df.select)
 saveRDS(combined.df.select, file = "2023-08-08_combined.df.select.rds")
 
 
+sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
+
+
+
+
 ## date range for validation
 
 date1 <- strptime('2021-7-1', format = '%Y-%m-%d')
