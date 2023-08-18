@@ -14,6 +14,8 @@ library(zoo)
 library(aod)
 library(ranger)
 library(gbm)
+library(rLakeAnalyzer)
+
 
 
 col1.aou <- "#648fff"
@@ -23,8 +25,7 @@ col4.aoupred <- "#785ef0"
 col5.other <- "#ffb000"
 
 
-## Define a function for O2 saturation, mean salinity for the time-series is
-## hard coded.
+## Define a function for O2 saturation, updated to include salinity measured at each time point
 
 O2sat <- function(s, t){
   TS = log((298.15 - t) /  (273.15 + t))
@@ -57,6 +58,11 @@ O2sat <- function(s, t){
 
 }
 
+combined.df <- readRDS(file = "2023-08-08_combined_env_data_hourly.rds")
+
+test.temps <- range(na.omit(combined.df$temperature))
+test.lowS <- O2sat(33.3, test.temps)
+test.highS <- O2sat(33.9, test.temps)
 
 
 
@@ -215,7 +221,18 @@ combined.df$Date.Time <- parse_date_time(combined.df$Date.Time, orders = "Ymd HM
 
 combined.df$O2_sat <- O2sat(t = combined.df$Temperature, s = combined.df$salinity) # uses function defined at beginning
 combined.df$aop <- -1 * (combined.df$O2_sat - combined.df$Dissolved.Oxygen)
-combined.df$delta <- combined.df$o2_bio - combined.df$aop
+combined.df$delta <- combined.df$o2_bio - combined.df$aop # hmm but o2_bio is also calculated with O2_sat in the python script
+
+# combined.df$O2.Ar_sat <- combined.df$O2_sat/combined.df$Ar_sat
+# combined.df$O2.Ar <- combined.df$O2/combined.df$ar 
+# combined.df$o2_bio <- 
+
+# ---- calculate depth ----
+
+w.dens <- water.density(wtr = combined.df$temperature, sal = combined.df$salinity)
+test.depth <- (combined.df$pressure * 10^4)/(w.dens*9.81)
+range(na.omit(test.depth))
+
 
 
 
@@ -246,7 +263,7 @@ points(combined.df$Date.Time, combined.df$o2_bio,
 ## salinity has many problematic values, exclude bad time points
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
-combined.df <- combined.df[which(combined.df$salinity > 33.3 & combined.df$salinity < 33.9),]
+combined.df <- combined.df[which(combined.df$salinity > 33.3 & combined.df$salinity < 33.8),]
 
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
@@ -663,6 +680,7 @@ for(r in 1:nrow(full.predictors.with.aop.cor)){
   
 }
 
+saveRDS(my.rolling.avgs.df)
 
 
 sccoos.dates <- readRDS("../16S_sccoos/2023-04-28_sccoos_dates.rds")
