@@ -439,50 +439,50 @@ aop.o2bio.delta <- combined.df.test$aop - combined.df.test$o2_bio #difference be
 
 aop.cor.rmse <- sqrt(mean(aop.cor.delta^2))
 
-plot(combined.df.test.Date.Time,
-     aou.o2bio.delta,
-     type = 'h')
+# plot(combined.df.test.Date.Time,
+#      aou.o2bio.delta,
+#      type = 'h')
 
-points(combined.df.test.Date.Time,
-       aop.cor.delta,
-     type = 'h',
-     col = 'red')
-
-hist(aop.cor.delta, breaks = 100, col = 'black') # corrected
-hist(aop.o2bio.delta, breaks = 100, col = 'red', add = T) # not corrected
-
-plot(combined.df.test.Date.Time,
-     test.aop,
-     type = 'l',
-     ylab = expression("[O"[2]*"]"[bio]*"|AOU  ["*mu*"M]"),
-     ylim = c(-100, 100),
-     col = 'orange',
-     xlab = 'Date')
-
-points(combined.df.test.Date.Time,
-       (combined.df.test$aop),
-       type = 'l',
-       col = 'black')
-
-points(combined.df.test.Date.Time,
-       combined.df.test$o2_bio,
-       type = 'l',
-       col = 'blue')
-
-legend('topleft',
-       legend = c('AOU', 'AOU corrected', expression("[O"[2]*"]"[bio])),
-       col = c('black', 'orange', 'blue'),
-       lty = 1)
-
-
-plot(test.aop ~ combined.df.test$o2_bio,
-     col = 'blue')
-points(combined.df.test$aop ~ combined.df.test$o2_bio,
-       col = 'black')
-abline(1,1)
-summary(lm(test.aop ~ combined.df.test$o2_bio))
-summary(lm(combined.df.test$aop ~ combined.df.test$o2_bio))
-
+# points(combined.df.test.Date.Time,
+#        aop.cor.delta,
+#      type = 'h',
+#      col = 'red')
+# 
+# hist(aop.cor.delta, breaks = 100, col = 'black') # corrected
+# hist(aop.o2bio.delta, breaks = 100, col = 'red', add = T) # not corrected
+# 
+# plot(combined.df.test.Date.Time,
+#      test.aop,
+#      type = 'l',
+#      ylab = expression("[O"[2]*"]"[bio]*"|AOU  ["*mu*"M]"),
+#      ylim = c(-100, 100),
+#      col = 'orange',
+#      xlab = 'Date')
+# 
+# points(combined.df.test.Date.Time,
+#        (combined.df.test$aop),
+#        type = 'l',
+#        col = 'black')
+# 
+# points(combined.df.test.Date.Time,
+#        combined.df.test$o2_bio,
+#        type = 'l',
+#        col = 'blue')
+# 
+# legend('topleft',
+#        legend = c('AOU', 'AOU corrected', expression("[O"[2]*"]"[bio])),
+#        col = c('black', 'orange', 'blue'),
+#        lty = 1)
+# 
+# 
+# plot(test.aop ~ combined.df.test$o2_bio,
+#      col = 'blue')
+# points(combined.df.test$aop ~ combined.df.test$o2_bio,
+#        col = 'black')
+# abline(1,1)
+# summary(lm(test.aop ~ combined.df.test$o2_bio))
+# summary(lm(combined.df.test$aop ~ combined.df.test$o2_bio))
+# 
 
 
 # ---- parameter hypertuning ----
@@ -579,7 +579,7 @@ ggplot() +
   theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12)) 
 
 
-# ---- calculate model performance ----
+# ---- calculate model performance on test data ----
 
 my.rmse <- sqrt(mean((combined.df.test$o2_bio - aop.cor.final)^2))
 my.rmse.old <- sqrt(mean((combined.df.test$o2_bio - combined.df.test$aop)^2))
@@ -593,27 +593,20 @@ model.old <- lm(combined.df.test$aop~combined.df.test$o2_bio)
 summary(model)
 summary(model.old)
 
-# wald.test(vcov(model), b = coef(model), Terms = 1, H0 = 1)
-# wald.test(vcov(model.old), b = coef(model), Terms = 1, H0 = 1)
-
-# t.stat <- (coef(summary(model))[2,1] - 1)/(coef(summary(model))[2,1])
-
 t.test(x = (aop.cor.final-combined.df.test$o2_bio), mu = 0)
 t.test(x = (combined.df.test$aop-combined.df.test$o2_bio), mu = 0)
 
 hist(aop.cor.final-combined.df.test$o2_bio)
 hist(combined.df.test$aop-combined.df.test$o2_bio)
 
-
 sum(abs(aop.cor.final-combined.df.test$o2_bio))
 sum(abs(combined.df.test$aop-combined.df.test$o2_bio))
-
 
 
 ggplot() +
   geom_point(aes(x = combined.df.test$o2_bio, y = combined.df.test$aop), color = col1.aou, size = 2) +
   geom_point(aes(combined.df.test$o2_bio, y = aop.cor.final), color = col3.aoucor, size = 2) +
-  geom_abline(slope = 1, intercept = 0, color = col2.o2bio, size = 2) +
+  geom_abline(slope = 1, intercept = 0, color = col2.o2bio, linewidth = 2) +
   scale_y_continuous(breaks = c(-75, -50, -25, 0, 25)) +
   labs(x = "[O2]bio", y = "AOP | Corrected AOP") +
   theme_bw() +
@@ -632,11 +625,11 @@ full.gbm <- gbm(o2_bio ~ .,
                     shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
                     cv.folds = 2)
 
-save(list = c('combined.gbm', 'full.gbm'), file = '20230808_model.Rdata')
+save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20230808_model.Rdata')
 
 
 
-# ---- apply model to miniDot timeseries ----
+# ---- apply model to full miniDot timeseries ----
 
 combined.df <- readRDS("2023-08-08_combined_env_data_hourly.rds")
 load(file = "20230808_model.Rdata")
@@ -651,13 +644,80 @@ ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
   geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop), color = col1.aou, lwd = 1, alpha = 0.7) +
   geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio), color = col2.o2bio, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = full.predictors$Date.Time, y = full.aop.corrected), color = col3.aoucor, lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected), color = col3.aoucor, lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = expression("Oxygen Anomaly  [ "*mu*"M]")) +
   theme_bw() +
   ylim(c(-250, 250)) +
   scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
   theme(panel.grid = element_blank()) +
   theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12)) 
+
+
+# ---- GBM cross validation ----
+
+library(ecospat)
+
+cross.val.df <- na.omit(combined.df[,c("Date.Time",predictors)])
+
+# try.it <- ecospat.cv.gbm(gbm.obj = full.gbm, data.cv = cal.df, K = 10, verbose = T)
+
+random.dates <- sample(cross.val.df$Date.Time[1:round(nrow(cross.val.df)*0.9)], size = 100, replace = F)
+
+my.cross.val.values <- as.data.frame(matrix(data = NA, nrow = length(random.dates), ncol = 12))
+colnames(my.cross.val.values) <- c("Date.Time", "n.days", "perc.data", "RMSE_no_model", "R2_no_model", "p_no_model", "RMSE_model_hyper", "R2_model_hyper", "p_model_hyper", "RMSE_model_hyper_full", "R2_model_hyper_full", "p_model_hyper_full")
+
+my.cross.val.values$Date.Time <- random.dates
+
+
+for(d in 1:length(random.dates)){
+  
+  # set date range to ~10% of data
+  date1 <- random.dates[d]
+  date2 <- cross.val.df$Date.Time[which(cross.val.df$Date.Time == date1)+round(0.1*nrow(cross.val.df))]
+  
+  index <- which(cross.val.df$Date.Time >= date1 & cross.val.df$Date.Time <= date2)
+  
+  cross.val.df.nd <- cross.val.df[,which(colnames(cross.val.df) != "Date.Time")]
+  
+  cross.val.test <- cross.val.df.nd[index,]
+  cross.val.train <- cross.val.df.nd[-index,] 
+  
+  my.cross.val.values$n.days[d] <- difftime(date2, date1)
+  my.cross.val.values$perc.data[d] <- nrow(cross.val.test)/nrow(cross.val.train)
+  
+  my.cross.val.values$RMSE_no_model[d] <- sqrt(mean((cross.val.test$o2_bio - cross.val.test$aop)^2))
+  my.cross.val.values$R2_no_model[d] <- summary(lm(formula = cross.val.test$o2_bio~cross.val.test$aop))$r.squared
+  my.cross.val.values$p_no_model[d] <- summary(lm(formula = cross.val.test$o2_bio~cross.val.test$aop))$coefficients[2,4]
+  
+  temp.gbm <- gbm(o2_bio ~ .,
+                  data = cross.val.train,
+                  interaction.depth = hyper.grid$interaction.depth[which.min(hyper.grid$RMSE)],
+                  distribution = 'gaussian',
+                  n.trees       = hyper.grid$n.trees[which.min(hyper.grid$RMSE)],
+                  bag.fraction  = hyper.grid$bag.fraction[which.min(hyper.grid$RMSE)],
+                  shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
+                  cv.folds = 2)
+  
+
+  temp.prediction <- predict(temp.gbm, cross.val.test)
+  
+  my.cross.val.values$RMSE_model_hyper[d] <- sqrt(mean((temp.prediction-cross.val.test$o2_bio)^2))
+  my.cross.val.values$R2_model_hyper[d] <- summary(lm(formula = temp.prediction~cross.val.test$o2_bio))$r.squared
+  my.cross.val.values$p_model_hyper[d] <- summary(lm(formula = temp.prediction~cross.val.test$o2_bio))$coefficients[2,4]
+  
+  full.prediction <- predict(temp.gbm, cross.val.df)
+  
+  my.cross.val.values$RMSE_model_hyper_full[d] <- sqrt(mean((full.prediction-cross.val.df$o2_bio)^2))
+  my.cross.val.values$R2_model_hyper_full[d] <- summary(lm(formula = full.prediction~cross.val.df$o2_bio))$r.squared
+  my.cross.val.values$p_model_hyper_full[d] <- summary(lm(formula = full.prediction~cross.val.df$o2_bio))$coefficients[2,4]
+  
+  
+  print(paste("Cross-Validation", d, "of", length(random.dates), "complete"))
+  
+}
+
+saveRDS(my.cross.val.values, file = "2023-11-14_cross_validation_results.rds")
+
 
 
 # ---- smoothing ----
