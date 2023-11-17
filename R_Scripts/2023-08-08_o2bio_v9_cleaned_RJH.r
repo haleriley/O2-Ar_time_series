@@ -15,6 +15,8 @@ library(aod)
 library(ranger)
 library(gbm)
 library(rLakeAnalyzer)
+library(readxl)
+library(vegan)
 
 
 
@@ -27,9 +29,34 @@ col5.other <- "#ffb000"
 
 ## Define a function for O2 saturation, updated to include salinity measured at each time point
 
-O2sat <- function(s, t){
-  TS = log((298.15 - t) /  (273.15 + t))
+# combined.df <- readRDS(file = "2023-08-08_combined_env_data_hourly.rds")
 
+## Define function to calculate Ar at saturation based on Hamme and Emerson, 2004
+Arsat <- function(salinity,temperature){
+  
+  TS = log((298.15-temperature) / (273.15+temperature))
+  
+  A0 = 2.7915
+  A1 = 3.17609
+  A2 = 4.13116
+  A3 = 4.90379
+  B0 = -6.96233 * 10 ** -3
+  B1 = -7.66670 * 10 ** -3
+  B2 = -1.16888 * 10 ** -2
+  
+  Ar = exp(A0 + A1*TS + A2*TS^2 + A3*TS^3 + salinity*(B0 + B1*TS + B2*TS^2))
+  
+  ## final units are umol kg-1
+  
+  return(Ar)
+  
+}
+
+## Define function to calculate O2 at saturation based on Garcia and Gordon, 1992
+O2sat <- function(salinity, temperature){
+  
+  TS = log((298.15-temperature) / (273.15+temperature))
+  
   A0 = 5.80818
   A1 = 3.20684
   A2 = 4.11890
@@ -42,70 +69,60 @@ O2sat <- function(s, t){
   B3 = -5.54491 * 10 ** -3
   C0 = -1.32412 * 10 ** -7
   
-  O2 = exp(A0 +
-             A1*TS +
-             A2* TS ** 2 +
-             A3* TS ** 3 +
-             A4* TS ** 4 +
-             A5* TS ** 5 +
-             s*(B0 +
-                  B1* TS +
-                  B2* TS ** 2 +
-                  B3* TS ** 3 +
-                  C0* s ** 2))
+  O2 = exp(A0 + A1*TS + A2*TS^2 + A3*TS^3 + A4*TS^4 + A5*TS^5 + salinity*(B0 + B1*TS + B2*TS^2 + B3*TS^3 + C0*salinity^2))
+  
+  ## final units are umol kg-1
   
   return(O2)
-
+  
 }
 
-combined.df <- readRDS(file = "2023-08-08_combined_env_data_hourly.rds")
 
-test.temps <- range(na.omit(combined.df$temperature))
-test.lowS <- O2sat(33.3, test.temps)
-test.highS <- O2sat(33.9, test.temps)
+
+# test.temps <- range(na.omit(combined.df$temperature))
+# test.lowS <- O2sat(33.3, test.temps)
+# test.highS <- O2sat(33.9, test.temps)
 
 
 
 # ---- get data ----
 
-## Get O2bio calculated in read_lvm.py ##
-
-mims <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio.csv') # this file is produced by read_lvm.py, refer to that script for details
-mims2 <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio_vol2.csv')
-mims <- rbind(mims, mims2) # combine datasets
-mims$date_time <- strptime(mims$date_time, format = '%Y-%m-%d %H')
-mims1 <- mims[mims$N2.Ar < 40 & mims$N2.Ar > 30 & mims$date_time < strptime('2021-3-26', format = '%Y-%m-%d'),] # manual QC
-mims2 <- mims[mims$N2.Ar < 20 & mims$N2.Ar > 9 & mims$date_time >= strptime('2021-3-26', format = '%Y-%m-%d'),]
-mims <- rbind(mims1, mims2)
-mims.date <- mims$date_time
-
-## aggregate hourly
-mims.hourly <- mims %>% group_by(date_time) %>% 
-  summarize(temperature = mean(temperature), O2_sat = mean(O2_sat), Ar_sat = mean(Ar_sat), O2.Ar_sat = mean(O2.Ar_sat), 
-            O2 = mean(O2), O2.Ar = mean(O2.Ar), N2.Ar = mean(N2.Ar), O2_CF = mean(O2_CF), o2_bio = mean(o2_bio))
-
-## quick data visualization
-plot(mims.date, mims$o2_bio)
-plot(mims.date, mims$N2.Ar)
-
-
-
 ### Get miniDOT data ###
 
-miniDot <- read.csv("Current_Model_Inputs/SIOPier_miniDOT_20180809_20230131_JBowman.csv", header = F, na.strings = "NA", skip = 2)
+miniDot <- read.csv("Current_Model_Inputs/miniDOT/SIOPier_miniDOT_20180809_20230503_JBowman (2).csv", header = F, na.strings = "NA", skip = 2)
+miniDot2 <- read_excel(path = "Current_Model_Inputs/miniDOT/SIOPier_miniDOT_20230503_20231005_BowmanLab.xlsx")
+miniDot2 <- miniDot2[-1,-c(4,8)]
+
 miniDot <- miniDot[,-1]
+miniDot2 <- miniDot2[,-1]
+
 colnames(miniDot) <- c("UTC_Date_._Time", "Pacific.Standard.Time", "Temperature", "Dissolved.Oxygen", "Dissolved.Oxygen.Saturation", "Sensor")
+colnames(miniDot2) <- c("UTC_Date_._Time", "Pacific.Standard.Time", "Temperature", "Dissolved.Oxygen", "Dissolved.Oxygen.Saturation", "Sensor")
+
+miniDot <- rbind(miniDot, miniDot2)
+miniDot$Temperature <- as.numeric(miniDot$Temperature)
+miniDot$Dissolved.Oxygen <- as.numeric(miniDot$Dissolved.Oxygen)
+miniDot$Dissolved.Oxygen.Saturation <- as.numeric(miniDot$Dissolved.Oxygen.Saturation)
+
 
 miniDot$Pacific.Standard.Time <- strptime(miniDot$Pacific.Standard.Time, format = '%Y-%m-%d %H')
+## I don't think we need this based off the info Samantha gave me (deployment ends 9pm on 1/31/23) 
 
 ## MiniDot reports in mg/L, need uMol
 miniDot$Dissolved.Oxygen <- (miniDot$Dissolved.Oxygen / (15.999 * 2 * 1000)) * 10 ** 6
 
+# manually remove data from post-deployment
+# miniDot <- miniDot[which(miniDot$UTC_Date_._Time )]
+
+
 miniDot.col.select <- c("Dissolved.Oxygen", "Temperature")
+
+miniDot <- na.omit(miniDot)
 
 ## aggregate hourly ##
 miniDot.hourly <- miniDot %>% group_by(Pacific.Standard.Time) %>% 
   summarize(Temperature = mean(Temperature), Dissolved.Oxygen = mean(Dissolved.Oxygen), Dissolved.Oxygen.Saturation = mean(Dissolved.Oxygen.Saturation))
+
 
 
 ### Get sccoos data ###
@@ -135,6 +152,65 @@ sccoos.hourly <- sccoos %>% group_by(time) %>%
 # saveRDS(sccoos.daily, file = "2023-04-12_sccoos_env_data_daily_mean.rds")
 
 
+## Get O2bio calculated in read_lvm.py ##
+
+mims <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio.csv') # this file is produced by read_lvm.py, refer to that script for details
+# mims2 <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio_vol2.csv')
+
+temp <- tempfile()
+download.file("https://www.polarmicrobes.org/MIMS_data_vol2.csv.gz", temp)
+my.file <- read.csv(gzfile(temp), as.is = TRUE)
+unlink(temp)
+
+mims2 <- my.file[,c("time", "N2", "O2", "Ar", "Inlet.Temperature")]
+mims2$date_time <- parse_date_time(paste(year(mims2$time), "-", month(mims2$time), "-", day(mims2$time), " ", hour(mims2$time), sep = ""), orders = "Ymd H")
+mims2 <- mims2[,-1]
+mims2 <- mims2 %>% group_by(date_time) %>% summarize_all(mean)
+
+temp.sccoos <- sccoos[,c("time", "temperature", "salinity")]
+colnames(temp.sccoos)[1] <- "date_time"
+temp.sccoos$date_time <- parse_date_time(as.character(temp.sccoos$date_time), orders = "Ymd HMS")
+temp.sccoos <- temp.sccoos %>% group_by(date_time) %>% summarize_all(mean)
+mims2.merged <- merge(mims2, temp.sccoos, by = "date_time", all.x = T, all.y = F)
+
+mims2.merged$Ar_sat <- Arsat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)
+mims2.merged$O2_sat <- O2sat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)  
+mims2.merged$O2.Ar_sat <- mims2.merged$O2_sat/mims2.merged$Ar_sat
+mims2.merged$O2.Ar <- mims2.merged$O2/mims2.merged$Ar
+mims2.merged$N2.Ar <- mims2.merged$N2/mims2.merged$Ar
+mims2.merged$O2_CF <- 1.54
+mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2022-11-17 12:00:00', orders = "Ymd HMS"))] <- 1.76
+mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2023-01-23 12:00:00', orders = "Ymd HMS"))] <- 2.0
+# D.O2.Ar <- ((mims2.merged$O2/mims2.merged$Ar)/(mims2.merged$O2_sat/mims2.merged$Ar_sat))-1
+# mims2.merged$O2_bio <- (mims2.merged$Ar/mims2.merged$Ar_sat)*mims2.merged$O2_sat*D.O2.Ar
+mims2.merged$o2_bio <- ((mims2.merged$O2.Ar * mims2.merged$O2_CF) / mims2.merged$O2.Ar_sat - 1) * mims2.merged$O2_sat
+mims2 <- mims2.merged[,-c(6:7)]
+mims$N2 <- NA
+mims$Ar <- NA
+colnames(mims)[which(colnames(mims) == "temperature")] <- "Inlet.Temperature"
+mims <- mims[,colnames(mims2)]
+mims$date_time <- parse_date_time(paste(year(mims$date_time), "-", month(mims$date_time), "-", day(mims$date_time), " ", hour(mims$date_time), sep = ""), orders = "Ymd H")
+mims <- mims %>% group_by(date_time) %>% summarize_all(mean)
+
+mims <- rbind(mims, mims2) # combine datasets
+# mims$date_time <- strptime(mims$date_time, format = '%Y-%m-%d %H')
+mims1 <- mims[mims$N2.Ar < 40 & mims$N2.Ar > 30 & mims$date_time < parse_date_time('2021-3-26 0-0-0', orders = "Ymd HMS"),] # manual QC
+mims2 <- mims[mims$N2.Ar < 20 & mims$N2.Ar > 9 & mims$date_time >= parse_date_time('2021-3-26 0-0-0', orders = "Ymd HMS"),]
+mims <- rbind(mims1, mims2)
+mims.date <- mims$date_time
+
+# ## aggregate hourly
+# mims.hourly <- mims %>% group_by(date_time) %>% 
+#   summarize(temperature = mean(temperature), O2_sat = mean(O2_sat), Ar_sat = mean(Ar_sat), O2.Ar_sat = mean(O2.Ar_sat), 
+#             O2 = mean(O2), O2.Ar = mean(O2.Ar), N2.Ar = mean(N2.Ar), O2_CF = mean(O2_CF), o2_bio = mean(o2_bio))
+mims.hourly <- mims
+
+## quick data visualization
+plot(mims.date, mims$o2_bio)
+plot(mims.date, mims$N2.Ar)
+
+
+
 ### Get NOAA LJAC1 buoy data ###
 ## Data downloaded from: https://www.ndbc.noaa.gov/station_history.php?station=ljac1
 
@@ -149,7 +225,7 @@ for (i in seq_along(file.names)) {
   assign(substr(file.names[i], start = 1, stop = nchar(file.names[i])-4), read.table(paste("Current_Model_Inputs/NOAA_LJAC1_RJH/", file.names[i], sep = ""), col.names = noaa.columns, na.strings = noaa.na))
 }
 
-ljac <- rbind(ljac1h2018, ljac1h2019, ljac1h2020, ljac1h2021, ljac1h2022, ljac1jan2023, ljac1feb2023, ljac1mar2023, ljac1apr2023, ljac1may2023, ljac1jun2023)
+ljac <- rbind(ljac1h2018, ljac1h2019, ljac1h2020, ljac1h2021, ljac1h2022, ljac1jan2023, ljac1feb2023, ljac1mar2023, ljac1apr2023, ljac1may2023, ljac1jun2023, ljac1jul2023, ljac1aug2023, ljac1sep2023, ljac1oct2023)
 ljac$date.time <- paste0(ljac$YY, '-', ljac$MM, '-', ljac$DD, ' ', ljac$hh)
 ljac$date.time <- strptime(ljac$date.time, format = '%Y-%m-%d %H', tz = 'GMT')
 ljac$date.time <- as.POSIXlt(ljac$date.time, tz = 'PST')
@@ -173,7 +249,7 @@ for (i in seq_along(file.names)) {
   assign(substr(file.names[i], start = 1, stop = nchar(file.names[i])-4), read.table(paste("Current_Model_Inputs/NOAA_LJPC1_RJH/", file.names[i], sep = ""), col.names = noaa.columns, na.strings = noaa.na))
 }
 
-ljpc1 <- rbind(ljpc1h2018, ljpc1h2019, ljpc1h2020, ljpc1h2021, ljpc1h2022, ljpc1jan2023, ljpc1feb2023, ljpc1mar2023, ljpc1apr2023, ljpc1may2023, ljpc1jun2023)
+ljpc1 <- rbind(ljpc1h2018, ljpc1h2019, ljpc1h2020, ljpc1h2021, ljpc1h2022, ljpc1jan2023, ljpc1feb2023, ljpc1mar2023, ljpc1apr2023, ljpc1may2023, ljpc1jun2023, ljpc1jul2023, ljpc1aug2023, ljpc1sep2023, ljpc1oct2023)
 ljpc1$date.time <- paste0(ljpc1$YY, '-', ljpc1$MM, '-', ljpc1$DD, ' ', ljpc1$hh)
 ljpc1$date.time <- strptime(ljpc1$date.time, format = '%Y-%m-%d %H', tz = 'GMT')
 ljpc1$date.time <- as.POSIXlt(ljpc1$date.time, tz = 'PST')
@@ -219,7 +295,6 @@ combined.df$Date.Time <- parse_date_time(combined.df$Date.Time, orders = "Ymd HM
 ## that comes with the MIMS data or salinity which comes from SCCOOS
 ## Note: AOP = -AOU
 
-combined.df$O2_sat <- O2sat(t = combined.df$Temperature, s = combined.df$salinity) # uses function defined at beginning
 combined.df$aop <- -1 * (combined.df$O2_sat - combined.df$Dissolved.Oxygen)
 combined.df$delta <- combined.df$o2_bio - combined.df$aop # hmm but o2_bio is also calculated with O2_sat in the python script
 
@@ -263,11 +338,15 @@ points(combined.df$Date.Time, combined.df$o2_bio,
 ## salinity has many problematic values, exclude bad time points
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
-combined.df <- combined.df[which(combined.df$salinity > 33.3 & combined.df$salinity < 33.8),]
+combined.df <- combined.df[which(combined.df$salinity > 33 & combined.df$salinity < 33.8),]
 
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
-saveRDS(combined.df, file = "2023-08-08_combined_env_data_hourly.rds")
+# remove really high [O2]bio measurements
+combined.df <- combined.df[which(combined.df$o2_bio < 400),]
+
+
+saveRDS(combined.df, file = "2023-11-17_combined_env_data_hourly.rds")
 
 
 # ---- aggregate by day ----
@@ -275,12 +354,12 @@ saveRDS(combined.df, file = "2023-08-08_combined_env_data_hourly.rds")
 combined.df$Date <- parse_date_time(paste(day(combined.df$Date.Time), month(combined.df$Date.Time), year(combined.df$Date.Time), sep = "-"), orders = "dmY")
 my.colnames <- colnames(combined.df)[c(2:27)]
 combined.df.daily <- combined.df %>% group_by(Date) %>% summarize_at(vars(my.colnames), mean)
-saveRDS(combined.df.daily, file = "2023-08-08_combined_env_data_daily.rds")
+saveRDS(combined.df.daily, file = "2023-11-17_combined_env_data_daily.rds")
 
 
 # ---- nice plots of available data -----
 
-plot(combined.df$Date, combined.df$aop,
+plot(combined.df$Date.Time, combined.df$aop,
      type = 'l',
      ylab = expression("[O"[2]*"]"[bio]*"|AOP  ["*mu*"M]"),
      xlab = 'Date')
@@ -304,9 +383,11 @@ ggplot(data = combined.df) +
 
 
 
+
+
 # ---- train and validate boosted regression tree ----
 
-combined.df <- readRDS(file = "2023-08-08_combined_env_data_hourly.rds")
+combined.df <- readRDS(file = "2023-11-17_combined_env_data_hourly.rds")
 
 predictors <- c('aop',
                 #'delta',
@@ -341,7 +422,7 @@ combined.df.select <- combined.df[which(combined.df$O2 >= 1.5e-9), c(predictors,
 ## not sure why there are missing values, but seem to be the case!
 combined.df.select <- na.omit(combined.df.select)
 
-saveRDS(combined.df.select, file = "2023-08-08_combined.df.select.rds")
+saveRDS(combined.df.select, file = "2023-11-17_combined.df.select.rds")
 
 
 sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
@@ -349,17 +430,57 @@ sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
 
 
 
-## date range for validation
+## date range for validation, shows dynamics well
 
-date1 <- strptime('2021-7-1', format = '%Y-%m-%d')
-date2 <- strptime('2021-7-15', format = '%Y-%m-%d')
+combined.df.select$Date.Time <- parse_date_time(combined.df.select$Date.Time, orders = "Ymd HMS")
+date1 <- parse_date_time('2021-7-1', orders = "Ymd")
+date2 <- parse_date_time('2021-7-14', orders = "Ymd")
 
-combined.df.train <- combined.df.select
+
+# PCA of predictors to compare train and test data
+
+my.date.labels <- combined.df.select$Date.Time
+env.pred.matrix <- as.matrix(combined.df.select[,predictors])
+env.pred.matrix <- env.pred.matrix[,-9]
+
+PCA <- rda(env.pred.matrix, scale = FALSE)
+
+barplot(as.vector(PCA$CA$eig)/sum(PCA$CA$eig))
+sum((as.vector(PCA$CA$eig)/sum(PCA$CA$eig))[1:2])
+smry <- summary(PCA)
+df1  <- data.frame(smry$sites[,1:2])# PC1 and PC2
+df1$Date.Time <- my.date.labels
+df2  <- data.frame(smry$species[,1:2])     # loadings for PC1 and PC2
+df1$data.set <- "train"
+df1$data.set[which(df1$Date.Time >= date1 & df1$Date.Time <= date2)] <- "test"
+df1$data.set <- factor(df1$data.set, levels = c("train", "test"))
+
+# df2 <- df2[which((abs(df2$PC1) + abs(df2$PC2)) >= 0.3),]
+
+ggplot(df1, aes(x=PC1, y=PC2)) + 
+  geom_point(aes(color = data.set, alpha = data.set)) +
+  geom_hline(yintercept=0, linetype="dotted") +
+  geom_vline(xintercept=0, linetype="dotted") +
+  coord_fixed() +
+  geom_segment(data=df2, aes(x=0, xend=PC1/10, y=0, yend=PC2/10),
+               color="black", arrow=arrow(length=unit(0.01,"npc"))) +
+  geom_text(data=df2,
+            aes(x=PC1/10,y=PC2/10,label=rownames(df2),
+                hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
+            color="black", size=4) +
+  scale_color_manual(values = c("grey69", "blue")) +
+  scale_alpha_manual(values = c(0.2, 0.8)) +
+  xlim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) + ylim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) +
+  theme_bw()
+
+
+
+
 
 combined.df.test <- combined.df.select[which(combined.df.select$Date.Time > date1 &
                                                combined.df.select$Date.Time < date2),]
 
-combined.df.train <- combined.df.train[which(!combined.df.train$Date.Time %in% combined.df.test$Date.Time),]
+combined.df.train <- combined.df.select[which(!combined.df.train$Date.Time %in% combined.df.test$Date.Time),]
 
 combined.df.test.Date.Time <- combined.df.test$Date.Time
 combined.df.train.Date.Time <- combined.df.train$Date.Time
@@ -536,8 +657,8 @@ final.gbm <- gbm(
   cv.folds = 2
 )
 
-# saveRDS(final.gbm, file = "2023-08-08_final_gbm.rds")
-final.gbm <- readRDS("2023-08-08_final_gbm.rds")
+saveRDS(final.gbm, file = "2023-11-17_final_gbm.rds")
+final.gbm <- readRDS("2023-11-17_final_gbm.rds")
 
 ## apply final model to test data
 
@@ -625,20 +746,20 @@ full.gbm <- gbm(o2_bio ~ .,
                     shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
                     cv.folds = 2)
 
-save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20230808_model.Rdata')
+save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231117_model.Rdata')
 
 
 
 # ---- apply model to full miniDot timeseries ----
 
-combined.df <- readRDS("2023-08-08_combined_env_data_hourly.rds")
-load(file = "20230808_model.Rdata")
+combined.df <- readRDS("2023-11-17_combined_env_data_hourly.rds")
+load(file = "20231117_model.Rdata")
 
 full.predictors <- na.omit(combined.df[,c(full.gbm$var.names, 'Date.Time')])
 
 full.predictors$aop.corrected <- predict(full.gbm, full.predictors)
 
-saveRDS(full.predictors, "2023-08-08_aop_cor_df.rds")
+saveRDS(full.predictors, "2023-11-17_aop_cor_df.rds")
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
@@ -671,9 +792,9 @@ my.cross.val.values$Date.Time <- random.dates
 
 for(d in 1:length(random.dates)){
   
-  # set date range to ~10% of data
+  # set date range to ~5% of data
   date1 <- random.dates[d]
-  date2 <- cross.val.df$Date.Time[which(cross.val.df$Date.Time == date1)+round(0.1*nrow(cross.val.df))]
+  date2 <- cross.val.df$Date.Time[which(cross.val.df$Date.Time == date1)+round(0.05*nrow(cross.val.df))]
   
   index <- which(cross.val.df$Date.Time >= date1 & cross.val.df$Date.Time <= date2)
   
@@ -716,7 +837,16 @@ for(d in 1:length(random.dates)){
   
 }
 
-saveRDS(my.cross.val.values, file = "2023-11-14_cross_validation_results.rds")
+saveRDS(my.cross.val.values, file = "2023-11-17_cross_validation_results.rds")
+
+
+hist(my.cross.val.values$RMSE_no_model)
+hist(my.cross.val.values$RMSE_model_hyper)
+hist(my.cross.val.values$RMSE_model_hyper_full)
+
+hist(my.cross.val.values$R2_no_model)
+hist(my.cross.val.values$R2_model_hyper)
+hist(my.cross.val.values$R2_model_hyper_full)
 
 
 
