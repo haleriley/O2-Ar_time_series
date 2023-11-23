@@ -17,6 +17,7 @@ library(gbm)
 library(rLakeAnalyzer)
 library(readxl)
 library(vegan)
+library(plotly)
 
 
 
@@ -179,7 +180,7 @@ mims2.merged$O2.Ar_sat <- mims2.merged$O2_sat/mims2.merged$Ar_sat
 mims2.merged$O2.Ar <- mims2.merged$O2/mims2.merged$Ar
 mims2.merged$N2.Ar <- mims2.merged$N2/mims2.merged$Ar
 mims2.merged$O2_CF <- 1.54
-mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2022-11-17 12:00:00', orders = "Ymd HMS"))] <- 1.76
+mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2022-11-22 12:00:00', orders = "Ymd HMS"))] <- 1.76
 mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2023-01-23 12:00:00', orders = "Ymd HMS"))] <- 2.0
 # D.O2.Ar <- ((mims2.merged$O2/mims2.merged$Ar)/(mims2.merged$O2_sat/mims2.merged$Ar_sat))-1
 # mims2.merged$O2_bio <- (mims2.merged$Ar/mims2.merged$Ar_sat)*mims2.merged$O2_sat*D.O2.Ar
@@ -346,7 +347,7 @@ plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 combined.df <- combined.df[which(combined.df$o2_bio < 400),]
 
 
-saveRDS(combined.df, file = "2023-11-17_combined_env_data_hourly.rds")
+saveRDS(combined.df, file = "2023-11-22_combined_env_data_hourly.rds")
 
 
 # ---- aggregate by day ----
@@ -354,7 +355,7 @@ saveRDS(combined.df, file = "2023-11-17_combined_env_data_hourly.rds")
 combined.df$Date <- parse_date_time(paste(day(combined.df$Date.Time), month(combined.df$Date.Time), year(combined.df$Date.Time), sep = "-"), orders = "dmY")
 my.colnames <- colnames(combined.df)[c(2:27)]
 combined.df.daily <- combined.df %>% group_by(Date) %>% summarize_at(vars(my.colnames), mean)
-saveRDS(combined.df.daily, file = "2023-11-17_combined_env_data_daily.rds")
+saveRDS(combined.df.daily, file = "2023-11-22_combined_env_data_daily.rds")
 
 
 # ---- nice plots of available data -----
@@ -387,7 +388,7 @@ ggplot(data = combined.df) +
 
 # ---- train and validate boosted regression tree ----
 
-combined.df <- readRDS(file = "2023-11-17_combined_env_data_hourly.rds")
+combined.df <- readRDS(file = "2023-11-22_combined_env_data_hourly.rds")
 
 predictors <- c('aop',
                 #'delta',
@@ -422,7 +423,7 @@ combined.df.select <- combined.df[which(combined.df$O2 >= 1.5e-9), c(predictors,
 ## not sure why there are missing values, but seem to be the case!
 combined.df.select <- na.omit(combined.df.select)
 
-saveRDS(combined.df.select, file = "2023-11-17_combined.df.select.rds")
+saveRDS(combined.df.select, file = "2023-11-22_combined.df.select.rds")
 
 
 sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
@@ -457,30 +458,54 @@ df1$data.set <- factor(df1$data.set, levels = c("train", "test"))
 
 # df2 <- df2[which((abs(df2$PC1) + abs(df2$PC2)) >= 0.3),]
 
-ggplot(df1, aes(x=PC1, y=PC2)) + 
+a <- ggplot(df1, aes(x=PC1, y=PC2)) + 
   geom_point(aes(color = data.set, alpha = data.set)) +
   geom_hline(yintercept=0, linetype="dotted") +
   geom_vline(xintercept=0, linetype="dotted") +
   coord_fixed() +
-  geom_segment(data=df2, aes(x=0, xend=PC1/10, y=0, yend=PC2/10),
+  geom_segment(data=df2, aes(x=0, xend=PC1, y=0, yend=PC2),
                color="black", arrow=arrow(length=unit(0.01,"npc"))) +
   geom_text(data=df2,
-            aes(x=PC1/10,y=PC2/10,label=rownames(df2),
-                hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
+            aes(x=PC1,y=PC2,label=rownames(df2)),
+                # hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
             color="black", size=4) +
   scale_color_manual(values = c("grey69", "blue")) +
-  scale_alpha_manual(values = c(0.2, 0.8)) +
-  xlim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) + ylim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) +
+  scale_alpha_manual(values = c(0.1, 0.8)) +
+  xlim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) + ylim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) +
   theme_bw()
 
+ggplotly(a)
 
+try.it <- merge(df1, combined.df.select, by = "Date.Time")
+summary(lm(try.it$temperature.sccoos~try.it$PC1))
+summary(lm(try.it$salinity~try.it$PC1))
+summary(lm(try.it$temperature.sccoos~try.it$PC2))
+summary(lm(try.it$salinity~try.it$PC2))
 
+a <- ggplot(try.it, aes(x=PC1, y=PC2)) + 
+  geom_point(aes(color = aop)) +
+  geom_hline(yintercept=0, linetype="dotted") +
+  geom_vline(xintercept=0, linetype="dotted") +
+  coord_fixed() +
+  geom_segment(data=df2, aes(x=0, xend=PC1, y=0, yend=PC2),
+               color="black", arrow=arrow(length=unit(0.01,"npc"))) +
+  geom_text(data=df2,
+            aes(x=PC1,y=PC2,label=rownames(df2)),
+            # hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
+            color="black", size=4) +
+  # scale_color_manual(values = c("grey69", "blue")) +
+  # scale_alpha_manual(values = c(0.1, 0.8)) +
+  scale_color_viridis_c() +
+  xlim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) + ylim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) +
+  theme_bw()
+
+ggplotly(a)
 
 
 combined.df.test <- combined.df.select[which(combined.df.select$Date.Time > date1 &
                                                combined.df.select$Date.Time < date2),]
 
-combined.df.train <- combined.df.select[which(!combined.df.train$Date.Time %in% combined.df.test$Date.Time),]
+combined.df.train <- combined.df.select[which(!combined.df.select$Date.Time %in% combined.df.test$Date.Time),]
 
 combined.df.test.Date.Time <- combined.df.test$Date.Time
 combined.df.train.Date.Time <- combined.df.train$Date.Time
@@ -657,8 +682,8 @@ final.gbm <- gbm(
   cv.folds = 2
 )
 
-saveRDS(final.gbm, file = "2023-11-17_final_gbm.rds")
-final.gbm <- readRDS("2023-11-17_final_gbm.rds")
+saveRDS(final.gbm, file = "2023-11-22_final_gbm.rds")
+final.gbm <- readRDS("2023-11-22_final_gbm.rds")
 
 ## apply final model to test data
 
@@ -746,20 +771,20 @@ full.gbm <- gbm(o2_bio ~ .,
                     shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
                     cv.folds = 2)
 
-save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231117_model.Rdata')
+save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231122_model.Rdata')
 
 
 
 # ---- apply model to full miniDot timeseries ----
 
-combined.df <- readRDS("2023-11-17_combined_env_data_hourly.rds")
-load(file = "20231117_model.Rdata")
+combined.df <- readRDS("2023-11-22_combined_env_data_hourly.rds")
+load(file = "20231122_model.Rdata")
 
 full.predictors <- na.omit(combined.df[,c(full.gbm$var.names, 'Date.Time')])
 
 full.predictors$aop.corrected <- predict(full.gbm, full.predictors)
 
-saveRDS(full.predictors, "2023-11-17_aop_cor_df.rds")
+saveRDS(full.predictors, "2023-11-22_aop_cor_df.rds")
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
@@ -774,27 +799,41 @@ ggplot() +
   theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12)) 
 
 
-# ---- GBM cross validation ----
+# ---- GBM chunk cross validation ----
 
-library(ecospat)
-
-cross.val.df <- na.omit(combined.df[,c("Date.Time",predictors)])
-
-# try.it <- ecospat.cv.gbm(gbm.obj = full.gbm, data.cv = cal.df, K = 10, verbose = T)
+combined.df.select <- readRDS("2023-11-22_combined.df.select.rds")
+cross.val.df <- na.omit(combined.df.select[,c("Date.Time",predictors)])
 
 random.dates <- sample(cross.val.df$Date.Time[1:round(nrow(cross.val.df)*0.9)], size = 100, replace = F)
 
-my.cross.val.values <- as.data.frame(matrix(data = NA, nrow = length(random.dates), ncol = 12))
+all.valid.dates <- c(cross.val.df$Date.Time[1])
+for(d in 1:nrow(cross.val.df)){
+  
+  date1 <- cross.val.df$Date.Time[d]
+  date2 <- date1 + 2*604800
+  
+  my.df <- cross.val.df$Date.Time[which(cross.val.df$Date.Time >= date1 & cross.val.df$Date.Time <= date2)]
+  
+  if(length(my.df) >= 0.8*338){ # number of hours in two weeks *0.9 in case a little missing data
+    
+    all.valid.dates <- c(all.valid.dates, date1)
+    
+  }
+  
+}
+
+all.valid.dates <- all.valid.dates[-1]
+all.valid.days <- all.valid.dates[which(hour(all.valid.dates) == 0)]
+
+my.cross.val.values <- as.data.frame(matrix(data = NA, nrow = length(all.valid.days), ncol = 12))
 colnames(my.cross.val.values) <- c("Date.Time", "n.days", "perc.data", "RMSE_no_model", "R2_no_model", "p_no_model", "RMSE_model_hyper", "R2_model_hyper", "p_model_hyper", "RMSE_model_hyper_full", "R2_model_hyper_full", "p_model_hyper_full")
 
-my.cross.val.values$Date.Time <- random.dates
+my.cross.val.values$Date.Time <- all.valid.days
 
-
-for(d in 1:length(random.dates)){
+for(d in 1:length(all.valid.days)){
   
-  # set date range to ~5% of data
-  date1 <- random.dates[d]
-  date2 <- cross.val.df$Date.Time[which(cross.val.df$Date.Time == date1)+round(0.05*nrow(cross.val.df))]
+  date1 <- all.valid.days[d]
+  date2 <- date1 + 2*604800
   
   index <- which(cross.val.df$Date.Time >= date1 & cross.val.df$Date.Time <= date2)
   
@@ -803,7 +842,6 @@ for(d in 1:length(random.dates)){
   cross.val.test <- cross.val.df.nd[index,]
   cross.val.train <- cross.val.df.nd[-index,] 
   
-  my.cross.val.values$n.days[d] <- difftime(date2, date1)
   my.cross.val.values$perc.data[d] <- nrow(cross.val.test)/nrow(cross.val.train)
   
   my.cross.val.values$RMSE_no_model[d] <- sqrt(mean((cross.val.test$o2_bio - cross.val.test$aop)^2))
@@ -833,11 +871,11 @@ for(d in 1:length(random.dates)){
   my.cross.val.values$p_model_hyper_full[d] <- summary(lm(formula = full.prediction~cross.val.df$o2_bio))$coefficients[2,4]
   
   
-  print(paste("Cross-Validation", d, "of", length(random.dates), "complete"))
+  print(paste("Cross-Validation", d, "of", length(all.valid.days), "complete"))
   
 }
 
-saveRDS(my.cross.val.values, file = "2023-11-17_cross_validation_results.rds")
+saveRDS(my.cross.val.values, file = "2023-11-22_cross_validation_results.rds")
 
 
 hist(my.cross.val.values$RMSE_no_model)
@@ -848,6 +886,36 @@ hist(my.cross.val.values$R2_no_model)
 hist(my.cross.val.values$R2_model_hyper)
 hist(my.cross.val.values$R2_model_hyper_full)
 
+cross.val.long <- my.cross.val.values[,c(1,4,7,10)] %>% pivot_longer(cols = colnames(my.cross.val.values)[c(4,7,10)], names_to = "model", values_to = "my.RMSE")
+
+ggplot(data = cross.val.long) +
+  geom_line(aes(x = Date.Time, y = my.RMSE, color = model), size = 0.5) +
+  geom_point(aes(x = Date.Time, y = my.RMSE, color = model), size = 2) +
+  scale_x_datetime(date_breaks = "1 month") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+df1$Date.Time <- parse_date_time(paste(year(df1$Date.Time), month(df1$Date.Time), day(df1$Date.Time), sep = "-"), orders = "Ymd")
+df1 <- df1 %>% group_by(Date.Time) %>% summarize(PC1 = mean(PC1), PC2 = mean(PC2))
+
+try.it <- merge(df1, cross.val.long, by = "Date.Time")
+
+ggplot(data = try.it[which(try.it$model == "RMSE_model_hyper_full"),], aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = my.RMSE), size = 2) +
+  geom_hline(yintercept=0, linetype="dotted") +
+  geom_vline(xintercept=0, linetype="dotted") +
+  coord_fixed() +
+  geom_segment(data=df2, aes(x=0, xend=PC1/10, y=0, yend=PC2/10),
+               color="black", arrow=arrow(length=unit(0.01,"npc"))) +
+  geom_text(data=df2,
+            aes(x=PC1/10,y=PC2/10,label=rownames(df2),
+                hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
+            color="black", size=4) +
+  # scale_color_manual(values = c("grey69", "blue")) +
+  scale_color_viridis_c() +
+  # scale_alpha_manual(values = c(0.1, 0.8)) +
+  xlim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) + ylim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) +
+  theme_bw()
 
 
 # ---- smoothing ----
