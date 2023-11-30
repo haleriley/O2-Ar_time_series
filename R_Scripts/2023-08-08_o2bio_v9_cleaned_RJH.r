@@ -373,6 +373,7 @@ legend('topleft',
 
 ggplot(data = combined.df) +
   geom_hline(yintercept = 0, alpha = 0.5) +
+  # geom_line(aes(x = Date.Time, y = aop), color = col1.aou, lwd = 1, alpha = 0.7) +
   geom_line(aes(x = Date.Time, y = aop), color = col1.aou, lwd = 1, alpha = 0.7) +
   geom_line(aes(x = Date.Time, y = o2_bio), color = col2.o2bio, lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = expression("Oxygen Anomaly  [ "*mu*"M]")) +
@@ -458,21 +459,25 @@ df1$data.set <- factor(df1$data.set, levels = c("train", "test"))
 
 # df2 <- df2[which((abs(df2$PC1) + abs(df2$PC2)) >= 0.3),]
 
-a <- ggplot(df1, aes(x=PC1, y=PC2)) + 
+ggplot(df1, aes(x=PC1, y=PC2)) + 
   geom_point(aes(color = data.set, alpha = data.set)) +
   geom_hline(yintercept=0, linetype="dotted") +
   geom_vline(xintercept=0, linetype="dotted") +
   coord_fixed() +
-  geom_segment(data=df2, aes(x=0, xend=PC1, y=0, yend=PC2),
-               color="black", arrow=arrow(length=unit(0.01,"npc"))) +
-  geom_text(data=df2,
-            aes(x=PC1,y=PC2,label=rownames(df2)),
-                # hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
-            color="black", size=4) +
-  scale_color_manual(values = c("grey69", "blue")) +
-  scale_alpha_manual(values = c(0.1, 0.8)) +
-  xlim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) + ylim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) +
-  theme_bw()
+  # geom_segment(data=df2, aes(x=0, xend=PC1, y=0, yend=PC2),
+  #              color="black", arrow=arrow(length=unit(0.01,"npc"))) +
+  # geom_text(data=df2,
+  #           aes(x=PC1,y=PC2,label=rownames(df2)),
+  #               # hjust= (1*sign(PC1)), vjust= (-0.5*sign(PC1))),
+  #           color="black", size=4) +
+  xlim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) + ylim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) +
+  # xlim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) + ylim(c(-max(c(df2$PC1, df2$PC2)), max(c(df2$PC1, df2$PC2)))) +
+  theme_bw() +
+  scale_alpha_manual(name = "Dataset", labels = factor(c("Training", "Validation"), levels = c("Training", "Validation")), guide = "legend", values = c(0.2, 0.8)) +
+  scale_color_manual(name = "Dataset", labels = factor(c("Training", "Validation"), levels = c("Training", "Validation")), guide = "legend", values = c("grey69", "black")) +
+  # theme(panel.grid = element_blank()) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
 ggplotly(a)
 
@@ -714,15 +719,18 @@ legend('topleft',
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.2) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$o2_bio), color = col2.o2bio, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$aop), color = col1.aou, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = aop.cor.final), color = col3.aoucor, lwd = 1, alpha = 0.7) +
-  labs(x = "Date", y = expression("Oxygen Anomaly  [ "*mu*"M]")) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = aop.cor.final, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Oxygen Anomaly [μM]") +
   ylim(c(-120,70)) +
   theme_bw() +
+  scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
   scale_x_datetime(date_breaks = "3 days", date_labels = "%b %d") +
-  theme(panel.grid = element_blank()) +
-  theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12)) 
+  # theme(panel.grid = element_blank()) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+  
 
 
 # ---- calculate model performance on test data ----
@@ -750,14 +758,16 @@ sum(abs(combined.df.test$aop-combined.df.test$o2_bio))
 
 
 ggplot() +
-  geom_point(aes(x = combined.df.test$o2_bio, y = combined.df.test$aop), color = col1.aou, size = 2) +
-  geom_point(aes(combined.df.test$o2_bio, y = aop.cor.final), color = col3.aoucor, size = 2) +
+  geom_point(aes(x = combined.df.test$o2_bio, y = combined.df.test$aop, color = "AOP"), size = 2) +
+  geom_point(aes(combined.df.test$o2_bio, y = aop.cor.final, color = "Corrected AOP"), size = 2) +
   geom_abline(slope = 1, intercept = 0, color = col2.o2bio, linewidth = 2) +
   scale_y_continuous(breaks = c(-75, -50, -25, 0, 25)) +
-  labs(x = "[O2]bio", y = "AOP | Corrected AOP") +
+  labs(x = "[O2]bio [μM]", y = "AOP [μM]") +
   theme_bw() +
-  theme(panel.grid = element_blank()) +
-  theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12))
+  # theme(panel.grid = element_blank()) +
+  scale_color_manual(name = "", labels = factor(c("AOP", "Corrected AOP"), levels = c("AOP", "Corrected AOP")), guide = "legend", values = c("AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
 
 # ---- full model ----
@@ -788,15 +798,33 @@ saveRDS(full.predictors, "2023-11-22_aop_cor_df.rds")
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop), color = col1.aou, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio), color = col2.o2bio, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected), color = col3.aoucor, lwd = 1, alpha = 0.7) +
-  labs(x = "Date", y = expression("Oxygen Anomaly  [ "*mu*"M]")) +
+  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Oxygen Anomaly [μM]") +
   theme_bw() +
   ylim(c(-250, 250)) +
   scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
-  theme(panel.grid = element_blank()) +
-  theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12)) 
+  # theme(panel.grid = element_blank()) +
+  scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+temp <- merge(full.predictors, combined.df.select, by = "Date.Time")
+temp$delta <- temp$o2_bio - temp$aop.corrected
+
+ggplot() +
+  geom_line(aes(x = temp$Date.Time, y = temp$delta), lwd = 1) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  geom_hline(yintercept = 0) +
+  # scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
 
 
 # ---- GBM chunk cross validation ----
@@ -887,6 +915,8 @@ hist(my.cross.val.values$R2_model_hyper)
 hist(my.cross.val.values$R2_model_hyper_full)
 
 cross.val.long <- my.cross.val.values[,c(1,4,7,10)] %>% pivot_longer(cols = colnames(my.cross.val.values)[c(4,7,10)], names_to = "model", values_to = "my.RMSE")
+cross.val.long$Date <- parse_date_time(paste(month(cross.val.long$Date.Time), day(cross.val.long$Date.Time), sep = "-"), orders = "md")
+cross.val.long$Year <- year(cross.val.long$Date.Time)
 
 ggplot(data = cross.val.long) +
   geom_line(aes(x = Date.Time, y = my.RMSE, color = model), size = 0.5) +
@@ -894,6 +924,20 @@ ggplot(data = cross.val.long) +
   scale_x_datetime(date_breaks = "1 month") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
+
+ggplot(data = cross.val.long) +
+  # geom_line(aes(x = Date, y = my.RMSE, color = model), size = 1) +
+  geom_point(aes(x = Date, y = my.RMSE, color = model), size = 2) +
+  facet_wrap(.~Year, ncol = 1) +
+  scale_x_datetime(date_breaks = "1 month", date_labels = "%b") +
+  theme_bw() +
+  # theme(axis.text.x = element_text(angle = 90)) +
+  labs(x = "Date", y = "RMSE [μM]", color = "Model") +
+  scale_color_manual(values = c(col5.other, "black", col3.aoucor), labels = c("2-week Validation Dataset", "Full Time Series", "No Model"), guide = "legend") +
+  # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+
 
 df1$Date.Time <- parse_date_time(paste(year(df1$Date.Time), month(df1$Date.Time), day(df1$Date.Time), sep = "-"), orders = "Ymd")
 df1 <- df1 %>% group_by(Date.Time) %>% summarize(PC1 = mean(PC1), PC2 = mean(PC2))
@@ -916,6 +960,73 @@ ggplot(data = try.it[which(try.it$model == "RMSE_model_hyper_full"),], aes(x = P
   # scale_alpha_manual(values = c(0.1, 0.8)) +
   xlim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) + ylim(c(-max(c(df1$PC1, df1$PC2)), max(c(df1$PC1, df1$PC2)))) +
   theme_bw()
+
+
+combined.df.select2 <- combined.df.select
+combined.df.select2$Date.Time <- parse_date_time(paste(year(combined.df.select$Date.Time), month(combined.df.select$Date.Time), day(combined.df.select$Date.Time), sep = "-"), orders = "Ymd")
+combined.df.select2 <- combined.df.select2 %>% group_by(Date.Time) %>% summarize_all(mean)
+
+try.it2 <- merge(try.it, combined.df.select2, by = "Date.Time", all.x = T, ally. = F)
+try.it2 <- try.it2 %>% pivot_wider(names_from = model, values_from = my.RMSE)
+try.it2$model.diff.hyper <- try.it2$RMSE_no_model - try.it2$RMSE_model_hyper  # higher is better
+try.it2$model.diff.hyper.full <- try.it2$RMSE_no_model - try.it2$RMSE_model_hyper_full  # higher is better
+
+
+summary(lm(formula = try.it2$model.diff.hyper~try.it2$o2_bio))
+
+ggplot(data = try.it2) +
+  geom_point(aes(x = o2_bio, y = model.diff.hyper, color = "2-week Validation Period - No Model"), size = 2) +
+  geom_smooth(aes(x = o2_bio, y = model.diff.hyper, color = "2-week Validation Period - No Model"), se = F, method = "lm", linewidth = 2) +
+  geom_point(aes(x = o2_bio, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), size = 2) +
+  geom_smooth(aes(x = o2_bio, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), se = F, method = "lm", linewidth = 2) +
+  theme_bw() +
+  labs(x = "[O2]bio [μM]", y = "RMSE Difference [μM]", color = "") +
+  scale_color_manual(values = c(col5.other, "black"), labels = c("2-week Validation Period - No Model", "Full Time Series Model - No Model"), guide = "legend") +
+  # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+ggplot(data = try.it2) +
+  geom_point(aes(x = temperature.sccoos, y = o2_bio), color = "black", size = 2) +
+  geom_smooth(aes(x = temperature.sccoos, y = o2_bio), color = "black", se = F, method = "lm", linewidth = 2) +
+  theme_bw() +
+  labs(x = "Water Temperature [C]", y = "[O2]bio [μM]") +
+  # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+summary(lm(formula = try.it2$temperature.sccoos~try.it2$o2_bio))
+
+ggplot(data = combined.df.select) +
+  geom_point(aes(x = temperature.sccoos, y = o2_bio), color = "black", size = 2) +
+  geom_smooth(aes(x = temperature.sccoos, y = o2_bio), color = "red", se = F, method = "lm", linewidth = 2) +
+  theme_bw() +
+  labs(x = "Water Temperature [C]", y = "[O2]bio [μM]") +
+  # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+summary(lm(formula = combined.df.select$temperature.sccoos~combined.df.select$o2_bio))
+
+
+hist(try.it2$temperature.sccoos)
+hist(try.it2$o2_bio)
+hist(try.it2$RMSE_no_model)
+hist(try.it2$RMSE_model_hyper)
+hist(try.it2$RMSE_model_hyper_full)
+
+
+
+
+
+ggplot(data = try.it2) +
+  geom_point(aes(x = salinity, y = model.diff.hyper, color = "2-week Validation Period - No Model"), size = 2) +
+  geom_smooth(aes(x = salinity, y = model.diff.hyper, color = "2-week Validation Period - No Model"), se = F, method = "lm", linewidth = 2) +
+  geom_point(aes(x = salinity, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), size = 2) +
+  geom_smooth(aes(x = salinity, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), se = F, method = "lm", linewidth = 2) +
+  theme_bw() +
+  labs(x = "Salinity [psu]", y = "RMSE Difference [μM]", color = "") +
+  scale_color_manual(values = c(col5.other, "black"), labels = c("2-week Validation Period - No Model", "Full Time Series Model - No Model"), guide = "legend") +
+  # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
 
 
 # ---- smoothing ----
