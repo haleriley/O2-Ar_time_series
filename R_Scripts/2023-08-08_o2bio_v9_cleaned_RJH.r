@@ -172,8 +172,17 @@ temp.sccoos <- sccoos[,c("time", "temperature", "salinity")]
 colnames(temp.sccoos)[1] <- "date_time"
 temp.sccoos$date_time <- parse_date_time(as.character(temp.sccoos$date_time), orders = "Ymd HMS")
 temp.sccoos <- temp.sccoos %>% group_by(date_time) %>% summarize_all(mean)
-mims2.merged <- merge(mims2, temp.sccoos, by = "date_time", all.x = T, all.y = F)
+mims2.merged <- merge(mims2, temp.sccoos, by = "date_time", all.x = T, all.y = T)
 
+# ## compare O2sat values between SCCOOS temperature and miniDOT temperature
+# test.df <- mims2.merged[,c("date_time", "Temperature", "Dissolved.Oxygen", "Dissolved.Oxygen.Saturation", "temperature.sccoos", "salinity")]
+# test.df$O2_sat1 <- O2sat(salinity = test.df$salinity, temperature = test.df$Temperature)
+# test.df$O2_sat2 <- O2sat(salinity = test.df$salinity, temperature = test.df$temperature.sccoos)
+# plot(test.df$O2_sat1, test.df$O2_sat2)
+# abline(0,1, col = "red")
+# summary(lm(test.df$O2_sat2~test.df$O2_sat1))
+
+# choosing to use SCCOOS data because they are collected together
 mims2.merged$Ar_sat <- Arsat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)
 mims2.merged$O2_sat <- O2sat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)  
 mims2.merged$O2.Ar_sat <- mims2.merged$O2_sat/mims2.merged$Ar_sat
@@ -193,12 +202,16 @@ mims <- mims[,colnames(mims2)]
 mims$date_time <- parse_date_time(paste(year(mims$date_time), "-", month(mims$date_time), "-", day(mims$date_time), " ", hour(mims$date_time), sep = ""), orders = "Ymd H")
 mims <- mims %>% group_by(date_time) %>% summarize_all(mean)
 
+sat.df <- mims2.merged[,c("date_time", "Ar_sat", "O2_sat", "O2.Ar_sat")]
+
 mims <- rbind(mims, mims2) # combine datasets
 # mims$date_time <- strptime(mims$date_time, format = '%Y-%m-%d %H')
 mims1 <- mims[mims$N2.Ar < 40 & mims$N2.Ar > 30 & mims$date_time < parse_date_time('2021-3-26 0-0-0', orders = "Ymd HMS"),] # manual QC
 mims2 <- mims[mims$N2.Ar < 20 & mims$N2.Ar > 9 & mims$date_time >= parse_date_time('2021-3-26 0-0-0', orders = "Ymd HMS"),]
 mims <- rbind(mims1, mims2)
 mims.date <- mims$date_time
+mims <- mims[,-which(colnames(mims) %in% c("Ar_sat", "O2_sat", "O2.Ar_sat"))]
+
 
 # ## aggregate hourly
 # mims.hourly <- mims %>% group_by(date_time) %>% 
@@ -268,27 +281,32 @@ colnames(miniDot.hourly)[1] <- "Date.Time"
 colnames(sccoos.hourly)[1] <- "Date.Time"
 colnames(ljac.hourly)[1] <- "Date.Time"
 colnames(ljpc1.hourly)[1] <- "Date.Time"
+colnames(sat.df)[1] <- "Date.Time"
 
 mims.hourly <- data.frame(mims.hourly)
 miniDot.hourly <- data.frame(miniDot.hourly)
 sccoos.hourly <- data.frame(sccoos.hourly)
 ljac.hourly <- data.frame(ljac.hourly)
 ljpc1.hourly <- data.frame(ljpc1.hourly)
+sat.df <- data.frame(sat.df)
 
 mims.hourly$Date.Time <- as.character(mims.hourly$Date.Time)
 miniDot.hourly$Date.Time <- as.character(miniDot.hourly$Date.Time)
 sccoos.hourly$Date.Time <- as.character(sccoos.hourly$Date.Time)
 ljac.hourly$Date.Time <- as.character(ljac.hourly$Date.Time)
 ljpc1.hourly$Date.Time <- as.character(ljpc1.hourly$Date.Time)
+sat.df$Date.Time <- as.character(sat.df$Date.Time)
 
 combined.df <- merge(mims.hourly, miniDot.hourly, by = "Date.Time", all = T, sort = T)
-combined.df <- merge(combined.df, sccoos.hourly, by = "Date.Time", all.x = T, sort = T)
-combined.df <- merge(combined.df, ljac.hourly, by = "Date.Time", all.x = T, sort = T)
-combined.df <- merge(combined.df, ljpc1.hourly, by = "Date.Time", all.x = T, sort = T)
+combined.df <- merge(combined.df, sccoos.hourly, by = "Date.Time", all = T, sort = T)
+combined.df <- merge(combined.df, ljac.hourly, by = "Date.Time", all = T, sort = T)
+combined.df <- merge(combined.df, ljpc1.hourly, by = "Date.Time", all = T, sort = T)
+combined.df <- merge(combined.df, sat.df, by = "Date.Time", all = T, sort = T)
 
 ## turn date into PociXct format using parse_date_time() function
 combined.df$Date.Time <- parse_date_time(combined.df$Date.Time, orders = "Ymd HMS")
 
+combined.df <- combined.df[which(is.na(combined.df$Dissolved.Oxygen) == F),]
 
 # ---- calculate AOP, O2_sat, and delta ----
 
@@ -343,8 +361,8 @@ combined.df <- combined.df[which(combined.df$salinity > 33 & combined.df$salinit
 
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
-# remove really high [O2]bio measurements
-combined.df <- combined.df[which(combined.df$o2_bio < 400),]
+# remove unreasonably high [O2]bio measurements
+combined.df <- combined.df[which(combined.df$o2_bio < 400 | is.na(combined.df$o2_bio)),]
 
 
 saveRDS(combined.df, file = "2023-11-22_combined_env_data_hourly.rds")
@@ -479,7 +497,6 @@ ggplot(df1, aes(x=PC1, y=PC2)) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-ggplotly(a)
 
 try.it <- merge(df1, combined.df.select, by = "Date.Time")
 summary(lm(try.it$temperature.sccoos~try.it$PC1))
@@ -687,8 +704,8 @@ final.gbm <- gbm(
   cv.folds = 2
 )
 
-saveRDS(final.gbm, file = "2023-11-22_final_gbm.rds")
-final.gbm <- readRDS("2023-11-22_final_gbm.rds")
+saveRDS(final.gbm, file = "2023-12-12_final_gbm.rds")
+final.gbm <- readRDS("2023-12-12_final_gbm.rds")
 
 ## apply final model to test data
 
@@ -781,20 +798,20 @@ full.gbm <- gbm(o2_bio ~ .,
                     shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
                     cv.folds = 2)
 
-save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231122_model.Rdata')
+save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231212_model.Rdata')
 
 
 
 # ---- apply model to full miniDot timeseries ----
 
 combined.df <- readRDS("2023-11-22_combined_env_data_hourly.rds")
-load(file = "20231122_model.Rdata")
+load(file = "20231212_model.Rdata")
 
 full.predictors <- na.omit(combined.df[,c(full.gbm$var.names, 'Date.Time')])
 
 full.predictors$aop.corrected <- predict(full.gbm, full.predictors)
 
-saveRDS(full.predictors, "2023-11-22_aop_cor_df.rds")
+saveRDS(full.predictors, "2023-12-12_aop_cor_df.rds")
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
@@ -810,11 +827,93 @@ ggplot() +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-temp <- merge(full.predictors, combined.df.select, by = "Date.Time")
-temp$delta <- temp$o2_bio - temp$aop.corrected
+full.predictors$delta <- abs(full.predictors$aop.corrected - full.predictors$aop)
+full.predictors$Year <- year(full.predictors$Date.Time)
+full.predictors$date.mm.dd <- parse_date_time(paste(month(full.predictors$Date.Time), day(full.predictors$Date.Time), sep = "-"), orders = "md")
+
+ggplot(data = full.predictors) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_line(aes(x = full.predictors$date.mm.dd, y = abs(full.predictors$delta), color = "Delta"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
+  facet_wrap(.~Year, ncol = 1)
+
+full.predictors$season <- "winter"
+full.predictors$season[which(full.predictors$date.mm.dd > parse_date_time("04-01", orders = "md") & full.predictors$date.mm.dd < parse_date_time("11-01", orders = "md"))] <- "summer"
+
+ggplot(data = full.predictors) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  # scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+
+temp <- as.data.frame(combined.df.select[,c("Date.Time", "o2_bio")])
+full.predictors <- merge(full.predictors, temp, by = "Date.Time", all = T)
+
+full.predictors$delta <- abs(full.predictors$aop.corrected - full.predictors$o2_bio)
+
+ggplot(data = full.predictors) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  # scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+
+full.predictors$delta <- abs(full.predictors$aop - full.predictors$o2_bio)
+
+ggplot(data = full.predictors) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  # scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+
+
+# temp <- merge(full.predictors, combined.df.select, by = "Date.Time")
+# temp$delta <- temp$o2_bio - temp$aop.corrected
+temp <- full.predictors
+temp$delta <- temp$aop.corrected - temp$aop
+temp$Year <- year(temp$Date.Time)
+temp$date.mm.dd <- parse_date_time(paste(month(temp$Date.Time), day(temp$Date.Time), sep = "-"), orders = "md")
 
 ggplot() +
-  geom_line(aes(x = temp$Date.Time, y = temp$delta), lwd = 1) +
+  geom_line(aes(x = temp$Date.Time, y = temp$delta), lwd = 1, color = "blue") +
   labs(x = "Date", y = "Delta [μM]") +
   theme_bw() +
   # ylim(c(-250, 250)) +
@@ -823,8 +922,22 @@ ggplot() +
   geom_hline(yintercept = 0) +
   # scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
-  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
+  theme(panel.grid.major.x = element_line(color = "black", linewidth = 1))
 
+ggplot(data = temp) +
+  geom_line(aes(x = date.mm.dd, y = delta), lwd = 1, color = "blue") +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  geom_hline(yintercept = 0) +
+  # scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
+  theme(panel.grid.major.x = element_line(color = "black", linewidth = 1)) +
+  facet_wrap(Year~., ncol = 1)
 
 
 # ---- GBM chunk cross validation ----
@@ -903,7 +1016,7 @@ for(d in 1:length(all.valid.days)){
   
 }
 
-saveRDS(my.cross.val.values, file = "2023-11-22_cross_validation_results.rds")
+saveRDS(my.cross.val.values, file = "2023-12-12_cross_validation_results.rds")
 
 
 hist(my.cross.val.values$RMSE_no_model)
