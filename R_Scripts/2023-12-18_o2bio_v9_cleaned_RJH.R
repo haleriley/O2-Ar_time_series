@@ -28,9 +28,7 @@ col4.aoupred <- "#785ef0"
 col5.other <- "#ffb000"
 
 
-## Define a function for O2 saturation, updated to include salinity measured at each time point
-
-# combined.df <- readRDS(file = "2023-08-08_combined_env_data_hourly.rds")
+# ---- functions ----
 
 ## Define function to calculate Ar at saturation based on Hamme and Emerson, 2004
 Arsat <- function(salinity,temperature){
@@ -78,15 +76,17 @@ O2sat <- function(salinity, temperature){
   
 }
 
+# ---- testing median salinity on [O2]sat ----
+
+## test if median salinity is okay to use for calculating [O2]sat
+combined.df <- readRDS("2023-11-22_combined_env_data_hourly.rds")
+test.temps <- range(na.omit(combined.df$temperature))
+test.lowS <- O2sat(33.0, test.temps)
+test.highS <- O2sat(33.9, test.temps)
 
 
-# test.temps <- range(na.omit(combined.df$temperature))
-# test.lowS <- O2sat(33.3, test.temps)
-# test.highS <- O2sat(33.9, test.temps)
 
-
-
-# ---- get data ----
+# ---- load data ----
 
 ### Get miniDOT data ###
 
@@ -111,10 +111,6 @@ miniDot$Pacific.Standard.Time <- strptime(miniDot$Pacific.Standard.Time, format 
 
 ## MiniDot reports in mg/L, need uMol
 miniDot$Dissolved.Oxygen <- (miniDot$Dissolved.Oxygen / (15.999 * 2 * 1000)) * 10 ** 6
-
-# manually remove data from post-deployment
-# miniDot <- miniDot[which(miniDot$UTC_Date_._Time )]
-
 
 miniDot.col.select <- c("Dissolved.Oxygen", "Temperature")
 
@@ -156,10 +152,9 @@ sccoos.hourly <- sccoos %>% group_by(time) %>%
 ## Get O2bio calculated in read_lvm.py ##
 
 mims <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio.csv') # this file is produced by read_lvm.py, refer to that script for details
-# mims2 <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio_vol2.csv')
 
 temp <- tempfile()
-download.file("https://www.polarmicrobes.org/MIMS_data_vol2.csv.gz", temp)
+download.file("https://www.polarmicrobes.org/MIMS_data_vol2.csv.gz", temp) # loads in current MIMS vol2 data, still need to QC more
 my.file <- read.csv(gzfile(temp), as.is = TRUE)
 unlink(temp)
 
@@ -174,15 +169,7 @@ temp.sccoos$date_time <- parse_date_time(as.character(temp.sccoos$date_time), or
 temp.sccoos <- temp.sccoos %>% group_by(date_time) %>% summarize_all(mean)
 mims2.merged <- merge(mims2, temp.sccoos, by = "date_time", all.x = T, all.y = T)
 
-# ## compare O2sat values between SCCOOS temperature and miniDOT temperature
-# test.df <- mims2.merged[,c("date_time", "Temperature", "Dissolved.Oxygen", "Dissolved.Oxygen.Saturation", "temperature.sccoos", "salinity")]
-# test.df$O2_sat1 <- O2sat(salinity = test.df$salinity, temperature = test.df$Temperature)
-# test.df$O2_sat2 <- O2sat(salinity = test.df$salinity, temperature = test.df$temperature.sccoos)
-# plot(test.df$O2_sat1, test.df$O2_sat2)
-# abline(0,1, col = "red")
-# summary(lm(test.df$O2_sat2~test.df$O2_sat1))
-
-# choosing to use SCCOOS data because they are collected together
+## choosing to use SCCOOS data because they are collected together
 mims2.merged$Ar_sat <- Arsat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)
 mims2.merged$O2_sat <- O2sat(salinity = mims2.merged$salinity, temperature = mims2.merged$temperature)  
 mims2.merged$O2.Ar_sat <- mims2.merged$O2_sat/mims2.merged$Ar_sat
@@ -191,8 +178,6 @@ mims2.merged$N2.Ar <- mims2.merged$N2/mims2.merged$Ar
 mims2.merged$O2_CF <- 1.54
 mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2022-11-22 12:00:00', orders = "Ymd HMS"))] <- 1.76
 mims2.merged$O2_CF[which(mims2.merged$date_time >= parse_date_time('2023-01-23 12:00:00', orders = "Ymd HMS"))] <- 2.0
-# D.O2.Ar <- ((mims2.merged$O2/mims2.merged$Ar)/(mims2.merged$O2_sat/mims2.merged$Ar_sat))-1
-# mims2.merged$O2_bio <- (mims2.merged$Ar/mims2.merged$Ar_sat)*mims2.merged$O2_sat*D.O2.Ar
 mims2.merged$o2_bio <- ((mims2.merged$O2.Ar * mims2.merged$O2_CF) / mims2.merged$O2.Ar_sat - 1) * mims2.merged$O2_sat
 mims2 <- mims2.merged[,-c(6:7)]
 mims$N2 <- NA
@@ -212,12 +197,7 @@ mims <- rbind(mims1, mims2)
 mims.date <- mims$date_time
 mims <- mims[,-which(colnames(mims) %in% c("Ar_sat", "O2_sat", "O2.Ar_sat"))]
 
-
-# ## aggregate hourly
-# mims.hourly <- mims %>% group_by(date_time) %>% 
-#   summarize(temperature = mean(temperature), O2_sat = mean(O2_sat), Ar_sat = mean(Ar_sat), O2.Ar_sat = mean(O2.Ar_sat), 
-#             O2 = mean(O2), O2.Ar = mean(O2.Ar), N2.Ar = mean(N2.Ar), O2_CF = mean(O2_CF), o2_bio = mean(o2_bio))
-mims.hourly <- mims
+mims.hourly <- mims ## just renaming 
 
 ## quick data visualization
 plot(mims.date, mims$o2_bio)
@@ -308,7 +288,7 @@ combined.df$Date.Time <- parse_date_time(combined.df$Date.Time, orders = "Ymd HM
 
 combined.df <- combined.df[which(is.na(combined.df$Dissolved.Oxygen) == F),]
 
-# ---- calculate AOP, O2_sat, and delta ----
+# ---- calculate AOP and delta ----
 
 ## The AOP calculation is done here, because you either need the O2_sat value
 ## that comes with the MIMS data or salinity which comes from SCCOOS
@@ -316,10 +296,6 @@ combined.df <- combined.df[which(is.na(combined.df$Dissolved.Oxygen) == F),]
 
 combined.df$aop <- -1 * (combined.df$O2_sat - combined.df$Dissolved.Oxygen)
 combined.df$delta <- combined.df$o2_bio - combined.df$aop # hmm but o2_bio is also calculated with O2_sat in the python script
-
-# combined.df$O2.Ar_sat <- combined.df$O2_sat/combined.df$Ar_sat
-# combined.df$O2.Ar <- combined.df$O2/combined.df$ar 
-# combined.df$o2_bio <- 
 
 # ---- calculate depth ----
 
@@ -356,9 +332,7 @@ points(combined.df$Date.Time, combined.df$o2_bio,
 
 ## salinity has many problematic values, exclude bad time points
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
-
 combined.df <- combined.df[which(combined.df$salinity > 33 & combined.df$salinity < 33.8),]
-
 plot(combined.df$salinity~as.Date(combined.df$Date.Time))
 
 # remove unreasonably high [O2]bio measurements
@@ -368,7 +342,7 @@ combined.df <- combined.df[which(combined.df$o2_bio < 400 | is.na(combined.df$o2
 saveRDS(combined.df, file = "2023-11-22_combined_env_data_hourly.rds")
 
 
-# ---- aggregate by day ----
+# ---- aggregate by day if desired ----
 
 combined.df$Date <- parse_date_time(paste(day(combined.df$Date.Time), month(combined.df$Date.Time), year(combined.df$Date.Time), sep = "-"), orders = "dmY")
 my.colnames <- colnames(combined.df)[c(2:27)]
@@ -376,18 +350,9 @@ combined.df.daily <- combined.df %>% group_by(Date) %>% summarize_at(vars(my.col
 saveRDS(combined.df.daily, file = "2023-11-22_combined_env_data_daily.rds")
 
 
-# ---- nice plots of available data -----
+# ---- nice plot of available AOP and [O2]bio data -----
 
-plot(combined.df$Date.Time, combined.df$aop,
-     type = 'l',
-     ylab = expression("[O"[2]*"]"[bio]*"|AOP  ["*mu*"M]"),
-     xlab = 'Date')
-points(combined.df$Date, combined.df$o2_bio, type = 'l', col = 'blue')
-legend('topleft',
-       legend = c('AOU', expression("[O"[2]*"]"[bio])),
-       lty = 1,
-       col = c('black', 'blue'))
-
+combined.df <- readRDS(file = "2023-11-22_combined_env_data_hourly.rds")
 
 ggplot(data = combined.df) +
   geom_hline(yintercept = 0, alpha = 0.5) +
@@ -406,11 +371,7 @@ ggplot(data = combined.df) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
 
-
-
-
-
-# ---- train and validate boosted regression tree ----
+# ---- establish training and validation data, set up GBM ----
 
 combined.df <- readRDS(file = "2023-11-22_combined_env_data_hourly.rds")
 
@@ -449,10 +410,7 @@ combined.df.select <- na.omit(combined.df.select)
 
 saveRDS(combined.df.select, file = "2023-11-22_combined.df.select.rds")
 
-
 sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
-
-
 
 
 ## date range for validation, shows dynamics well
@@ -462,7 +420,32 @@ date1 <- parse_date_time('2021-7-1', orders = "Ymd")
 date2 <- parse_date_time('2021-7-14', orders = "Ymd")
 
 
-# PCA of predictors to compare train and test data
+combined.df.test <- combined.df.select[which(combined.df.select$Date.Time > date1 &
+                                               combined.df.select$Date.Time < date2),]
+
+combined.df.train <- combined.df.select[which(!combined.df.select$Date.Time %in% combined.df.test$Date.Time),]
+
+combined.df.test.Date.Time <- combined.df.test$Date.Time
+combined.df.train.Date.Time <- combined.df.train$Date.Time
+
+combined.df.train <- combined.df.train[,predictors]
+combined.df.test <- combined.df.test[,predictors]
+
+## plot all AOP and [O2]bio data used in the model
+ggplot() +
+  geom_hline(aes(yintercept = 0), alpha = 0.2) +
+  geom_line(aes(x = combined.df.select$Date.Time[-c(1:2)], y = combined.df.select$o2_bio[-c(1:2)]), color = col2.o2bio, lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.select$Date.Time[-c(1:2)], y = combined.df.select$aop[-c(1:2)]), color = col1.aou, lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$o2_bio), color = col3, lwd = 1, alpha = 1) +
+  labs(x = "Date", y = expression("[O"[2]*"]"[bio]*" | AOP  ["*mu*"M]")) +
+  ylim(c(-250,250)) +
+  theme_bw() +
+  scale_x_datetime(date_breaks = "3 months", date_labels = "%b %Y") +
+  theme(panel.grid = element_blank()) +
+  theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12))
+
+
+# ---- PCA of predictors to compare train and test data ----
 
 my.date.labels <- combined.df.select$Date.Time
 env.pred.matrix <- as.matrix(combined.df.select[,predictors])
@@ -503,13 +486,13 @@ ggplot(df1, aes(x=PC1, y=PC2)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
 
-try.it <- merge(df1, combined.df.select, by = "Date.Time")
-summary(lm(try.it$temperature.sccoos~try.it$PC1))
-summary(lm(try.it$salinity~try.it$PC1))
-summary(lm(try.it$temperature.sccoos~try.it$PC2))
-summary(lm(try.it$salinity~try.it$PC2))
+df1 <- merge(df1, combined.df.select, by = "Date.Time")
+summary(lm(df1$temperature.sccoos~df1$PC1))
+summary(lm(df1$salinity~df1$PC1))
+summary(lm(df1$temperature.sccoos~df1$PC2))
+summary(lm(df1$salinity~df1$PC2))
 
-a <- ggplot(try.it, aes(x=PC1, y=PC2)) + 
+a <- ggplot(df1, aes(x=PC1, y=PC2)) + 
   geom_point(aes(color = aop)) +
   geom_hline(yintercept=0, linetype="dotted") +
   geom_vline(xintercept=0, linetype="dotted") +
@@ -527,33 +510,6 @@ a <- ggplot(try.it, aes(x=PC1, y=PC2)) +
   theme_bw()
 
 ggplotly(a)
-
-
-combined.df.test <- combined.df.select[which(combined.df.select$Date.Time > date1 &
-                                               combined.df.select$Date.Time < date2),]
-
-combined.df.train <- combined.df.select[which(!combined.df.select$Date.Time %in% combined.df.test$Date.Time),]
-
-combined.df.test.Date.Time <- combined.df.test$Date.Time
-combined.df.train.Date.Time <- combined.df.train$Date.Time
-
-combined.df.train <- combined.df.train[,predictors]
-combined.df.test <- combined.df.test[,predictors]
-
-
-ggplot() +
-  geom_hline(aes(yintercept = 0), alpha = 0.2) +
-  geom_line(aes(x = combined.df.select$Date.Time[-c(1:2)], y = combined.df.select$o2_bio[-c(1:2)]), color = col2.o2bio, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.select$Date.Time[-c(1:2)], y = combined.df.select$aop[-c(1:2)]), color = col1.aou, lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$o2_bio), color = col3, lwd = 1, alpha = 1) +
-  labs(x = "Date", y = expression("[O"[2]*"]"[bio]*" | AOP  ["*mu*"M]")) +
-  ylim(c(-250,250)) +
-  theme_bw() +
-  scale_x_datetime(date_breaks = "3 months", date_labels = "%b %Y") +
-  theme(panel.grid = element_blank()) +
-  theme(axis.title = element_text(size = 14), axis.text = element_text(size = 12))
-  
-
 
 
 # ---- train partial model ----
@@ -579,7 +535,6 @@ combined.gbm.summary <- summary(combined.gbm)
 combined.gbm.summary$var <- factor(combined.gbm.summary$var, levels = rev(rownames(combined.gbm.summary)))
 ggplot(data = combined.gbm.summary) +
   geom_col(aes(x = var, y = rel.inf), fill = c(col5.other, col5.other, col5.other, col1.aou, col1.aou, col1.aou, col1.aou, col1.aou)) +
-  # scale_fill_manual(values = ) +
   labs(x = "GBM Predictor", y = "Relative Influence") +
   scale_x_discrete(labels = rev(c("AOP", "Water Temperature", "Salinity", "Wave Height", "Dominant Period", "Gust Speed", "Pressure", "Wind Speed"))) +
   coord_flip() +
@@ -593,7 +548,6 @@ sum(combined.gbm.summary$rel.inf[1:3])
 plot(combined.gbm$fit ~ combined.df.train$o2_bio,
      ylab = 'Predicted',
      xlab = 'Observed')
-
 abline(0, 1, col = 'red')
 
 summary(lm(combined.gbm$fit ~ combined.df.train$o2_bio))
@@ -611,51 +565,6 @@ aop.cor.delta <- aop.cor - combined.df.test$o2_bio #difference between predicted
 aop.o2bio.delta <- combined.df.test$aop - combined.df.test$o2_bio #difference between uncorrected aop and o2bio
 
 aop.cor.rmse <- sqrt(mean(aop.cor.delta^2))
-
-# plot(combined.df.test.Date.Time,
-#      aou.o2bio.delta,
-#      type = 'h')
-
-# points(combined.df.test.Date.Time,
-#        aop.cor.delta,
-#      type = 'h',
-#      col = 'red')
-# 
-# hist(aop.cor.delta, breaks = 100, col = 'black') # corrected
-# hist(aop.o2bio.delta, breaks = 100, col = 'red', add = T) # not corrected
-# 
-# plot(combined.df.test.Date.Time,
-#      test.aop,
-#      type = 'l',
-#      ylab = expression("[O"[2]*"]"[bio]*"|AOU  ["*mu*"M]"),
-#      ylim = c(-100, 100),
-#      col = 'orange',
-#      xlab = 'Date')
-# 
-# points(combined.df.test.Date.Time,
-#        (combined.df.test$aop),
-#        type = 'l',
-#        col = 'black')
-# 
-# points(combined.df.test.Date.Time,
-#        combined.df.test$o2_bio,
-#        type = 'l',
-#        col = 'blue')
-# 
-# legend('topleft',
-#        legend = c('AOU', 'AOU corrected', expression("[O"[2]*"]"[bio])),
-#        col = c('black', 'orange', 'blue'),
-#        lty = 1)
-# 
-# 
-# plot(test.aop ~ combined.df.test$o2_bio,
-#      col = 'blue')
-# points(combined.df.test$aop ~ combined.df.test$o2_bio,
-#        col = 'black')
-# abline(1,1)
-# summary(lm(test.aop ~ combined.df.test$o2_bio))
-# summary(lm(combined.df.test$aop ~ combined.df.test$o2_bio))
-# 
 
 
 # ---- parameter hypertuning ----
@@ -710,34 +619,13 @@ final.gbm <- gbm(
 )
 
 saveRDS(final.gbm, file = "2023-12-12_final_gbm.rds")
-final.gbm <- readRDS("2023-12-12_final_gbm.rds")
 
-## apply final model to test data
+# ---- apply final model to test data ----
+
+final.gbm <- readRDS("2023-12-12_final_gbm.rds")
 
 aop.cor.final <- predict(final.gbm, combined.df.test)
 
-plot(combined.df.test.Date.Time,
-     aop.cor.final,
-     type = 'l',
-     ylab = expression("[O"[2]*"]"[bio]*"|AOP  ["*mu*"M]"),
-     ylim = c(-100, 100),
-     col = 'orange',
-     xlab = 'Date')
-
-points(combined.df.test.Date.Time,
-       (combined.df.test$aop),
-       type = 'l',
-       col = 'black')
-
-points(combined.df.test.Date.Time,
-       combined.df.test$o2_bio,
-       type = 'l',
-       col = 'blue')
-
-legend('topleft',
-       legend = c('AOP', 'AOP corrected', expression("[O"[2]*"]"[bio])),
-       col = c('black', 'orange', 'blue'),
-       lty = 1)
 
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.2) +
@@ -752,20 +640,16 @@ ggplot() +
   # theme(panel.grid = element_blank()) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
-  
 
-
-# ---- calculate model performance on test data ----
+# ---- calculate model performance on validation data ----
 
 my.rmse <- sqrt(mean((combined.df.test$o2_bio - aop.cor.final)^2))
 my.rmse.old <- sqrt(mean((combined.df.test$o2_bio - combined.df.test$aop)^2))
 
-# cor(combined.df.test$o2_bio, final.test.aou)
-# cor(combined.df.test$o2_bio, combined.df.test$aou)
-
 model <- lm(aop.cor.final~combined.df.test$o2_bio)
 model.old <- lm(combined.df.test$aop~combined.df.test$o2_bio)
 
+## various analyses of error reduction from the model
 summary(model)
 summary(model.old)
 
@@ -777,7 +661,6 @@ hist(combined.df.test$aop-combined.df.test$o2_bio)
 
 sum(abs(aop.cor.final-combined.df.test$o2_bio))
 sum(abs(combined.df.test$aop-combined.df.test$o2_bio))
-
 
 ggplot() +
   geom_point(aes(x = combined.df.test$o2_bio, y = combined.df.test$aop, color = "AOP"), size = 2) +
@@ -795,13 +678,13 @@ ggplot() +
 # ---- full model ----
 
 full.gbm <- gbm(o2_bio ~ .,
-                    data = na.omit(combined.df[,predictors]),
-                    interaction.depth = hyper.grid$interaction.depth[which.min(hyper.grid$RMSE)],
-                    distribution = 'gaussian',
-                    n.trees       = hyper.grid$n.trees[which.min(hyper.grid$RMSE)],
-                    bag.fraction  = hyper.grid$bag.fraction[which.min(hyper.grid$RMSE)],
-                    shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
-                    cv.folds = 2)
+                data = na.omit(combined.df[,predictors]),
+                interaction.depth = hyper.grid$interaction.depth[which.min(hyper.grid$RMSE)],
+                distribution = 'gaussian',
+                n.trees       = hyper.grid$n.trees[which.min(hyper.grid$RMSE)],
+                bag.fraction  = hyper.grid$bag.fraction[which.min(hyper.grid$RMSE)],
+                shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
+                cv.folds = 2)
 
 save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231212_model.Rdata')
 
@@ -812,23 +695,33 @@ save(list = c('combined.gbm', 'full.gbm', 'hyper.grid'), file = '20231212_model.
 combined.df <- readRDS("2023-11-22_combined_env_data_hourly.rds")
 load(file = "20231212_model.Rdata")
 
-full.predictors <- na.omit(combined.df[,c(full.gbm$var.names, 'Date.Time')])
-
-full.predictors$aop.corrected <- predict(full.gbm, full.predictors)
+combined.df$aop.corrected <- predict(full.gbm, combined.df[,c(full.gbm$var.names, 'Date.Time')])
 
 saveRDS(full.predictors, "2023-12-12_aop_cor_df.rds")
 
-summary(full.predictors$aop)
-sd(full.predictors$aop)
+# ---- analysis of temporal trends (and visualization) ----
 
-summary(full.predictors$o)
-sd(full.predictors$aop)
+## summary of uncorrected AOP
+summary(combined.df$aop) # full time series, not just what is used in the model
+sd(combined.df$aop)
+t.test(combined.df$aop, mu = 0)
 
+## summary of corrected AOP
+summary(combined.df$aop.corrected) # full time series, not just what is used in the model
+sd(combined.df$aop.corrected)
+t.test(combined.df$aop.corrected, mu = 0)
+
+## summary of [O2]bio
+summary(combined.df$o2_bio) # full time series, not just what is used in the model
+sd(na.omit(combined.df$o2_bio))
+t.test(combined.df$o2_bio, mu = 0)
+
+## full corrected AOP time series (with uncorrected AOP and [o2]bio)
 ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
   geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Oxygen Anomaly [μM]") +
   theme_bw() +
   ylim(c(-250, 250)) +
@@ -838,18 +731,28 @@ ggplot() +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-full.predictors$delta <- abs(full.predictors$aop.corrected - full.predictors$aop)
-full.predictors$Year <- year(full.predictors$Date.Time)
-full.predictors$date.mm.dd <- parse_date_time(paste(month(full.predictors$Date.Time), day(full.predictors$Date.Time), sep = "-"), orders = "md")
 
-ggplot(data = full.predictors) +
+## calculate differences between uAOP, cAOP, and [o2]bio
+combined.df$delta <- (combined.df$aop - combined.df$aop.corrected)
+combined.df$delta2 <- (combined.df$aop.corrected - combined.df$o2_bio)
+combined.df$delta3 <- (combined.df$aop - combined.df$o2_bio)
+
+combined.df$Year <- year(combined.df$Date.Time)
+combined.df$date.mm.dd <- parse_date_time(paste(month(combined.df$Date.Time), day(combined.df$Date.Time), hour(combined.df$Date.Time), minute(combined.df$Date.Time), second(combined.df$Date.Time),sep = "-"), orders = "mdHMS")
+
+ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = full.predictors$date.mm.dd, y = abs(full.predictors$delta), color = "Delta"), lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$aop)), color = "black", lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$delta), color = "Delta"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$delta2)), color = "red", lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$delta3)), color = "blue", lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$o2_bio)), color = "blue", lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$temperature.sccoos*3)), color = "black", lwd = 1, alpha = 0.7) +
+    # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Delta [μM]") +
   theme_bw() +
-  ylim(c(-250, 250)) +
+  # ylim(c(-250, 250)) +
   # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
   # theme(panel.grid = element_blank()) +
   scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
@@ -857,14 +760,41 @@ ggplot(data = full.predictors) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
   facet_wrap(.~Year, ncol = 1)
 
-full.predictors$season <- "winter"
-full.predictors$season[which(full.predictors$date.mm.dd > parse_date_time("04-01", orders = "md") & full.predictors$date.mm.dd < parse_date_time("11-01", orders = "md"))] <- "summer"
+summary(lm(formula = combined.df$delta ~ combined.df$aop))
+plot(combined.df$delta ~ combined.df$aop)
+summary(lm(formula = combined.df$delta2 ~ combined.df$aop))
+summary(lm(formula = combined.df$delta3 ~ combined.df$aop))
 
-ggplot(data = full.predictors) +
+summary(lm(formula = combined.df$delta ~ combined.df$aop.corrected))
+summary(lm(formula = combined.df$delta ~ combined.df$o2_bio))
+
+ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df$date.mm.dd, y = combined.df$temperature.sccoos, color = "Delta"), lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
+  facet_wrap(.~Year, ncol = 1)
+range(combined.df$temperature.sccoos)
+O2sat(33.5, min(combined.df$temperature.sccoos))
+O2sat(33.5, max(combined.df$temperature.sccoos))
+
+
+combined.df$season <- "winter"
+combined.df$season[which(combined.df$date.mm.dd > parse_date_time("04-01", orders = "md") & combined.df$date.mm.dd < parse_date_time("10-01", orders = "md"))] <- "summer"
+
+ggplot(data = combined.df) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = combined.df$season, y = abs(combined.df$delta)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Delta [μM]") +
   theme_bw() +
   # ylim(c(-250, 250)) +
@@ -874,18 +804,16 @@ ggplot(data = full.predictors) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+t.test(x = combined.df$delta[which(combined.df$season == "summer")], y = combined.df$delta[which(combined.df$season == "winter")])
 
-temp <- as.data.frame(combined.df.select[,c("Date.Time", "o2_bio")])
-full.predictors <- merge(full.predictors, temp, by = "Date.Time", all = T)
 
-full.predictors$delta <- abs(full.predictors$aop.corrected - full.predictors$o2_bio)
+combined.df$delta <- abs(combined.df$aop.corrected - combined.df$o2_bio)
 
-ggplot(data = full.predictors) +
+ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  geom_boxplot(aes(x = combined.df$season, y = abs(combined.df$delta)), lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Delta [μM]") +
   theme_bw() +
   # ylim(c(-250, 250)) +
@@ -895,15 +823,17 @@ ggplot(data = full.predictors) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+t.test(x = combined.df$delta[which(combined.df$season == "summer")], y = combined.df$delta[which(combined.df$season == "winter")])
 
-full.predictors$delta <- abs(full.predictors$aop - full.predictors$o2_bio)
 
-ggplot(data = full.predictors) +
+
+combined.df$delta <- abs(combined.df$aop - combined.df$o2_bio)
+
+ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_boxplot(aes(x = full.predictors$season, y = abs(full.predictors$delta)), lwd = 1, alpha = 0.7) +
+  geom_boxplot(aes(x = combined.df$season, y = abs(combined.df$delta)), lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  # geom_line(aes(x = full.predictors$Date.Time, y = full.predictors$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Delta [μM]") +
   theme_bw() +
   # ylim(c(-250, 250)) +
@@ -913,12 +843,14 @@ ggplot(data = full.predictors) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
-t.test(x = full.predictors$delta[which(full.predictors$season == "summer")], y = full.predictors$delta[which(full.predictors$season == "winter")])
+t.test(x = combined.df$delta[which(combined.df$season == "summer")], y = combined.df$delta[which(combined.df$season == "winter")])
 
 
-# temp <- merge(full.predictors, combined.df.select, by = "Date.Time")
+
+
+# temp <- merge(combined.df, combined.df.select, by = "Date.Time")
 # temp$delta <- temp$o2_bio - temp$aop.corrected
-temp <- full.predictors
+temp <- combined.df
 temp$delta <- temp$aop.corrected - temp$aop
 temp$Year <- year(temp$Date.Time)
 temp$date.mm.dd <- parse_date_time(paste(month(temp$Date.Time), day(temp$Date.Time), sep = "-"), orders = "md")
@@ -1009,7 +941,7 @@ for(d in 1:length(all.valid.days)){
                   shrinkage   = hyper.grid$shrinkage[which.min(hyper.grid$RMSE)],
                   cv.folds = 2)
   
-
+  
   temp.prediction <- predict(temp.gbm, cross.val.test)
   
   my.cross.val.values$RMSE_model_hyper[d] <- sqrt(mean((temp.prediction-cross.val.test$o2_bio)^2))
@@ -1200,13 +1132,13 @@ ggplot() +
 ## gradient boosted trees, etc.
 
 dummy.predictors <- c("o2_bio",
-"temperature.sccoos.zoo",
-                'salinity',
-                "pressure",
-                "WSPD",
-                "GST",
-                "WVHT",
-                "DPD")
+                      "temperature.sccoos.zoo",
+                      'salinity',
+                      "pressure",
+                      "WSPD",
+                      "GST",
+                      "WVHT",
+                      "DPD")
 library(tree)
 
 temp <- tree(o2_bio ~ .,
