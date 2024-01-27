@@ -5,6 +5,22 @@ getwd()
 setwd('C://Users/haler/Documents/PhD-Bowman/O2-Ar_time_series/R_Data/')
 set.seed(1234)
 
+predictors <- c('aop',
+                #'delta',
+                "temperature.sccoos",
+                'salinity',
+                "pressure",
+                "WSPD",
+                "GST",
+                "WVHT",
+                "DPD",
+                #"ATMP",
+                #"PRES",
+                "o2_bio")
+
+accessory <- c('Date.Time', 'Dissolved.Oxygen', 'O2')
+
+
 
 # ---- library ----
 
@@ -789,6 +805,8 @@ saveRDS(combined.df, "2024-01-19_aop_cor_df.rds")
 
 # ---- analysis of temporal trends (and visualization) ----
 
+combined.df.select
+
 ## summary of uncorrected AOP
 summary(combined.df$aop) # full time series, not just what is used in the model
 sd(combined.df$aop)
@@ -805,11 +823,11 @@ sd(na.omit(combined.df$o2_bio))
 t.test(combined.df$o2_bio, mu = 0)
 
 ## full corrected AOP time series (with uncorrected AOP and [o2]bio)
-fig4 <- ggplot() +
+fig4 <- ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = aop, color = "AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Oxygen Anomaly [μM]") +
   theme_bw() +
   ylim(c(-250, 250)) +
@@ -822,16 +840,24 @@ fig4 <- ggplot() +
 fig4
 
 ## calculate differences between uAOP, cAOP, and [o2]bio
-combined.df$delta <- (combined.df$aop - combined.df$aop.corrected)
+combined.df$delta <- (combined.df$aop - combined.df$aop.corrected)/combined.df$o2_bio
 combined.df$error.c <- (combined.df$aop.corrected - combined.df$o2_bio)/combined.df$o2_bio
-combined.df$error.u <- (combined.df$aop - combined.df$o2_bio)
+combined.df$error.u <- (combined.df$aop - combined.df$o2_bio)/combined.df$o2_bio
 
 combined.df$Year <- year(combined.df$Date.Time)
 combined.df$date.mm.dd <- parse_date_time(paste(month(combined.df$Date.Time), day(combined.df$Date.Time), hour(combined.df$Date.Time), minute(combined.df$Date.Time), second(combined.df$Date.Time),sep = "-"), orders = "mdHMS")
 
-ggplot(data = combined.df) +
+summary(abs(combined.df$error.u))
+summary(abs(combined.df$error.c))
+summary(lm(combined.df$delta~combined.df$error.u))
+
+try.it <- combined.df[which(combined.df$Year >= 2021),]
+ggplot(data = try.it) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = combined.df$date.mm.dd, y = combined.df$error.c), color = "blue", lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = date.mm.dd, y = delta), color = col5.other, lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = date.mm.dd, y = (error.c)), color = col3.aoucor, lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$date.mm.dd, y = abs(combined.df$error.c)), color = "blue", lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = date.mm.dd, y = (error.u)), color = col1.aou, lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df$date.mm.dd, y = abs(combined.df$error.c)), color = "blue", lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$aop)), color = "black", lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$delta), color = "Delta"), lwd = 1, alpha = 0.7) +
@@ -841,7 +867,7 @@ ggplot(data = combined.df) +
   # geom_line(aes(x = combined.df$date.mm.dd, y = (combined.df$temperature.sccoos*3)), color = "black", lwd = 1, alpha = 0.7) +
     # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
   # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
-  labs(x = "Date", y = "Percent Change from [O2]bio to AOP_cor [%]") +
+  labs(x = "Date", y = "Percent Change between BOU and Estimated BOU [%]") +
   theme_bw() +
   # ylim(c(-250, 250)) +
   # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
@@ -855,16 +881,19 @@ sccoos.hourly$Date.Time <- parse_date_time(sccoos.hourly$Date.Time, orders = "Ym
 try.it <- merge(x = combined.df, y = sccoos.hourly[,c(1,5)], by = "Date.Time", all.x = T, all.y = F)
 
 ggplot(data = try.it) +
-  geom_line(aes(x = date.mm.dd, y = log(chlorophyll)), color = "blue") +
+  # geom_line(aes(x = date.mm.dd, y = chlorophyll), color = "blue") +
   # geom_line(aes(x = date.mm.dd, y = log(abs(error.c))), color = "red") +
   theme_bw() +
-  facet_wrap(.~Year, ncol = 1)
+  # facet_wrap(.~Year, ncol = 1)
+  geom_point(aes(x = abs(error.c), y = chlorophyll), color = "darkgreen")
+
+summary(lm(formula = try.it$error.c ~ try.it$chlorophyll))
 
 
 summary(lm(formula = combined.df$delta ~ combined.df$aop))
 plot(combined.df$delta ~ combined.df$aop)
-summary(lm(formula = combined.df$delta2 ~ combined.df$aop))
-summary(lm(formula = combined.df$delta3 ~ combined.df$aop))
+summary(lm(formula = combined.df$error.u ~ combined.df$aop))
+summary(lm(formula = combined.df$error.c ~ combined.df$aop))
 
 summary(lm(formula = combined.df$delta ~ combined.df$aop.corrected))
 summary(lm(formula = combined.df$delta ~ combined.df$o2_bio))
@@ -906,6 +935,39 @@ ggplot(data = combined.df) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
 t.test(x = combined.df$delta[which(combined.df$season == "summer")], y = combined.df$delta[which(combined.df$season == "winter")])
+
+
+ggplot(data = combined.df) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = combined.df$season, y = abs(combined.df$error.c)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  # scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+t.test(x = combined.df$error.c[which(combined.df$season == "summer")], y = combined.df$error.c[which(combined.df$season == "winter")])
+
+ggplot(data = combined.df) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5) +
+  geom_boxplot(aes(x = combined.df$season, y = abs(combined.df$error.u)), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df.select$Date.Time, y = combined.df.select$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
+  # geom_line(aes(x = combined.df$Date.Time, y = combined.df$aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Delta [μM]") +
+  theme_bw() +
+  # ylim(c(-250, 250)) +
+  # scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  # theme(panel.grid = element_blank()) +
+  # scale_color_manual(name = "", labels = factor(c("Delta"), levels = c("Delta")), guide = "legend", values = c("Delta" = col5.other)) +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+t.test(x = combined.df$error.u[which(combined.df$season == "summer")], y = combined.df$error.u[which(combined.df$season == "winter")])
 
 
 combined.df$delta <- abs(combined.df$aop.corrected - combined.df$o2_bio)
@@ -989,7 +1051,7 @@ ggplot(data = temp) +
 combined.df.select <- readRDS("2024-01-19_combined.df.select.rds")
 cross.val.df <- na.omit(combined.df.select[,c("Date.Time",predictors)])
 
-random.dates <- sample(cross.val.df$Date.Time[1:round(nrow(cross.val.df)*0.9)], size = 100, replace = F)
+# random.dates <- sample(cross.val.df$Date.Time[1:round(nrow(cross.val.df)*0.9)], size = 100, replace = F)
 
 all.valid.dates <- c(cross.val.df$Date.Time[1])
 for(d in 1:nrow(cross.val.df)){
@@ -1010,8 +1072,8 @@ for(d in 1:nrow(cross.val.df)){
 all.valid.dates <- all.valid.dates[-1]
 all.valid.days <- all.valid.dates[which(hour(all.valid.dates) == 0)]
 
-my.cross.val.values <- as.data.frame(matrix(data = NA, nrow = length(all.valid.days), ncol = 12))
-colnames(my.cross.val.values) <- c("Date.Time", "n.days", "perc.data", "RMSE_no_model", "R2_no_model", "p_no_model", "RMSE_model_hyper", "R2_model_hyper", "p_model_hyper", "RMSE_model_hyper_full", "R2_model_hyper_full", "p_model_hyper_full")
+my.cross.val.values <- as.data.frame(matrix(data = NA, nrow = length(all.valid.days), ncol = 15))
+colnames(my.cross.val.values) <- c("Date.Time", "n.days", "perc.data", "RMSE_no_model", "R2_no_model", "p_no_model", "avg_perc_error_no_model", "RMSE_model_hyper", "R2_model_hyper", "p_model_hyper", "avg_perc_error_hyper", "RMSE_model_hyper_full", "R2_model_hyper_full", "p_model_hyper_full", "avg_perc_error_hyper_full")
 
 my.cross.val.values$Date.Time <- all.valid.days
 
@@ -1032,6 +1094,7 @@ for(d in 1:length(all.valid.days)){
   my.cross.val.values$RMSE_no_model[d] <- sqrt(mean((cross.val.test$o2_bio - cross.val.test$aop)^2))
   my.cross.val.values$R2_no_model[d] <- summary(lm(formula = cross.val.test$o2_bio~cross.val.test$aop))$r.squared
   my.cross.val.values$p_no_model[d] <- summary(lm(formula = cross.val.test$o2_bio~cross.val.test$aop))$coefficients[2,4]
+  my.cross.val.values$avg_perc_error_no_model[d] <- mean((cross.val.test$o2_bio - cross.val.test$aop)/cross.val.test$o2_bio)
   
   temp.gbm <- gbm(o2_bio ~ .,
                   data = cross.val.train,
@@ -1048,12 +1111,15 @@ for(d in 1:length(all.valid.days)){
   my.cross.val.values$RMSE_model_hyper[d] <- sqrt(mean((temp.prediction-cross.val.test$o2_bio)^2))
   my.cross.val.values$R2_model_hyper[d] <- summary(lm(formula = temp.prediction~cross.val.test$o2_bio))$r.squared
   my.cross.val.values$p_model_hyper[d] <- summary(lm(formula = temp.prediction~cross.val.test$o2_bio))$coefficients[2,4]
+  my.cross.val.values$avg_perc_error_hyper[d] <- mean((cross.val.test$o2_bio - temp.prediction)/cross.val.test$o2_bio)
+  
   
   full.prediction <- predict(temp.gbm, cross.val.df)
   
   my.cross.val.values$RMSE_model_hyper_full[d] <- sqrt(mean((full.prediction-cross.val.df$o2_bio)^2))
   my.cross.val.values$R2_model_hyper_full[d] <- summary(lm(formula = full.prediction~cross.val.df$o2_bio))$r.squared
   my.cross.val.values$p_model_hyper_full[d] <- summary(lm(formula = full.prediction~cross.val.df$o2_bio))$coefficients[2,4]
+  my.cross.val.values$avg_perc_error_hyper_full[d] <- mean((cross.val.df$o2_bio - full.prediction)/cross.val.df$o2_bio)
   
   
   print(paste("Cross-Validation", d, "of", length(all.valid.days), "complete"))
@@ -1067,34 +1133,41 @@ hist(my.cross.val.values$RMSE_no_model)
 hist(my.cross.val.values$RMSE_model_hyper)
 hist(my.cross.val.values$RMSE_model_hyper_full)
 
+hist(my.cross.val.values$avg_perc_error_no_model)
+hist(my.cross.val.values$avg_perc_error_hyper)
+hist(my.cross.val.values$avg_perc_error_hyper_full)
+
 hist(my.cross.val.values$R2_no_model)
 hist(my.cross.val.values$R2_model_hyper)
 hist(my.cross.val.values$R2_model_hyper_full)
 
-cross.val.long <- my.cross.val.values[,c(1,4,7,10)] %>% pivot_longer(cols = colnames(my.cross.val.values)[c(4,7,10)], names_to = "model", values_to = "my.RMSE")
+cross.val.long <- my.cross.val.values[,c(1,7,11,15)] %>% pivot_longer(cols = colnames(my.cross.val.values)[c(7,11,15)], names_to = "model", values_to = "my.perc.error")
 cross.val.long$Date <- parse_date_time(paste(month(cross.val.long$Date.Time), day(cross.val.long$Date.Time), sep = "-"), orders = "md")
 cross.val.long$Year <- year(cross.val.long$Date.Time)
 
 ggplot(data = cross.val.long) +
-  geom_line(aes(x = Date.Time, y = my.RMSE, color = model), size = 0.5) +
-  geom_point(aes(x = Date.Time, y = my.RMSE, color = model), size = 2) +
+  # geom_line(aes(x = Date.Time, y = my.perc.error, color = model), size = 0.5) +
+  # geom_point(aes(x = Date.Time, y = my.perc.error, color = model), size = 2) +
+  geom_line(aes(x = Date.Time, y = abs(my.perc.error), color = model), size = 0.5) +
+  geom_point(aes(x = Date.Time, y = abs(my.perc.error), color = model), size = 2) +
   scale_x_datetime(date_breaks = "1 month") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
 
 plot.3a <- ggplot(data = cross.val.long) +
   # geom_line(aes(x = Date, y = my.RMSE, color = model), size = 1) +
-  geom_point(aes(x = Date, y = my.RMSE, color = model), size = 2) +
+  geom_point(aes(x = Date, y = abs(my.perc.error), color = model), size = 2) +
+  # geom_point(aes(x = Date, y = my.perc.error, color = model), size = 2) +
   facet_wrap(.~Year, ncol = 1) +
   scale_x_datetime(date_breaks = "1 month", date_labels = "%b") +
   theme_bw() +
   # theme(axis.text.x = element_text(angle = 90)) +
-  labs(x = "Date", y = "RMSE [μM]", color = "Model") +
+  labs(x = "Date", y = "Percent Error [%]", color = "Model") +
   scale_color_manual(values = c(col5.other, "black", col3.aoucor), labels = c("2-week Validation Dataset", "Full Time Series", "No Model"), guide = "legend") +
   # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
   theme(strip.background = element_rect(fill = "white", color = NULL), strip.text = element_text(size = 12, face = "bold"))
-
+plot.3a
 
 
 df1$Date.Time <- parse_date_time(paste(year(df1$Date.Time), month(df1$Date.Time), day(df1$Date.Time), sep = "-"), orders = "Ymd")
@@ -1103,7 +1176,7 @@ df1 <- df1 %>% group_by(Date.Time) %>% summarize(PC1 = mean(PC1), PC2 = mean(PC2
 try.it <- merge(df1, cross.val.long, by = "Date.Time")
 
 ggplot(data = try.it[which(try.it$model == "RMSE_model_hyper_full"),], aes(x = PC1, y = PC2)) +
-  geom_point(aes(color = my.RMSE), size = 2) +
+  geom_point(aes(color = my.perc.error), size = 2) +
   geom_hline(yintercept=0, linetype="dotted") +
   geom_vline(xintercept=0, linetype="dotted") +
   coord_fixed() +
@@ -1125,12 +1198,13 @@ combined.df.select2$Date.Time <- parse_date_time(paste(year(combined.df.select$D
 combined.df.select2 <- combined.df.select2 %>% group_by(Date.Time) %>% summarize_all(mean)
 
 try.it2 <- merge(try.it, combined.df.select2, by = "Date.Time", all.x = T, ally. = F)
-try.it2 <- try.it2 %>% pivot_wider(names_from = model, values_from = my.RMSE)
-try.it2$model.diff.hyper <- try.it2$RMSE_no_model - try.it2$RMSE_model_hyper  # higher is better
-try.it2$model.diff.hyper.full <- try.it2$RMSE_no_model - try.it2$RMSE_model_hyper_full  # higher is better
+try.it2 <- try.it2 %>% pivot_wider(names_from = model, values_from = my.perc.error)
+try.it2$model.diff.hyper <- try.it2$avg_perc_error_no_model - try.it2$avg_perc_error_hyper  # higher is better
+try.it2$model.diff.hyper.full <- try.it2$avg_perc_error_no_model - try.it2$avg_perc_error_hyper_full  # higher is better
 
 
 summary(lm(formula = try.it2$model.diff.hyper~try.it2$o2_bio))
+summary(lm(formula = try.it2$model.diff.hyper.full~try.it2$o2_bio))
 
 plot.3c <- ggplot(data = try.it2) +
   geom_point(aes(x = o2_bio, y = model.diff.hyper, color = "2-week Validation Period - No Model"), size = 2) +
@@ -1144,13 +1218,16 @@ plot.3c <- ggplot(data = try.it2) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
   theme(axis.title.y = element_blank(), axis.text.y = element_blank())
 
+summary(lm(formula = try.it2$model.diff.hyper~try.it2$aop))
+summary(lm(formula = try.it2$model.diff.hyper.full~try.it2$aop))
+
 plot.3b <- ggplot(data = try.it2) +
-  geom_point(aes(x = temperature.sccoos, y = model.diff.hyper, color = "2-week Validation Period - No Model"), size = 2) +
-  geom_smooth(aes(x = temperature.sccoos, y = model.diff.hyper, color = "2-week Validation Period - No Model"), se = F, method = "lm", linewidth = 2) +
-  geom_point(aes(x = temperature.sccoos, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), size = 2) +
-  geom_smooth(aes(x = temperature.sccoos, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), se = F, method = "lm", linewidth = 2) +
+  geom_point(aes(x = aop, y = model.diff.hyper, color = "2-week Validation Period - No Model"), size = 2) +
+  geom_smooth(aes(x = aop, y = model.diff.hyper, color = "2-week Validation Period - No Model"), se = F, method = "lm", linewidth = 2) +
+  geom_point(aes(x = aop, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), size = 2) +
+  geom_smooth(aes(x = aop, y = model.diff.hyper.full, color = "Full Time Series Model - No Model"), se = F, method = "lm", linewidth = 2) +
   theme_bw() +
-  labs(x = "Temperature [C]", y = "RMSE Difference [μM]", color = "") +
+  labs(x = "AOP", y = "RMSE Difference [μM]", color = "") +
   scale_color_manual(values = c(col5.other, "black"), labels = c("2-week Validation Period - No Model", "Full Time Series Model - No Model"), guide = "legend") +
   # scale_linetype(labels = c("2021", "2022", "2023"), guide = "legend") +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12), legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) +
