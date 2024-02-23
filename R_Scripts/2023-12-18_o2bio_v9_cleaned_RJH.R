@@ -163,20 +163,21 @@ sccoos.hourly <- sccoos %>% group_by(time) %>%
 # sccoos.daily$sample.date <- parse_date_time(paste(year(sccoos.daily$time), month(sccoos.daily$time), day(sccoos.daily$time), sep = "-"), orders = "Ymd")
 # sccoos.daily <- sccoos.daily %>% group_by(sample.date) %>%
 #   summarize(temperature.sccoos = mean(temperature), conductivity = mean(conductivity), pressure = mean(pressure), chlorophyll = mean(chlorophyll), salinity = mean(salinity))
-# saveRDS(sccoos.daily, file = "2023-04-12_sccoos_env_data_daily_mean.rds")
+# saveRDS(sccoos.daily, file = "2024-02-14_sccoos_env_data_daily_mean.rds")
 
 
 ## Get O2bio calculated in read_lvm.py ##
 
 mims <- read.csv('Current_Model_Inputs/MIMS_o2bio/o2bio.csv') # this file is produced by read_lvm.py, refer to that script for details
 
-temp <- tempfile()
-download.file("https://www.polarmicrobes.org/MIMS_data_vol2.csv.gz", temp) # loads in current MIMS vol2 data, still need to QC more
-my.file <- read.csv(gzfile(temp), as.is = TRUE)
-unlink(temp)
+# temp <- tempfile()
+# download.file("https://www.polarmicrobes.org/MIMS_data_vol2.csv.gz", temp) # loads in current MIMS vol2 data, still need to QC more
+# my.file <- read.csv(gzfile(temp), as.is = TRUE)
+# unlink(temp)
+my.file <- read.csv("2024-02-16_MIMS_data_vol2.csv") # THIS NEEDS TO BE FIXED!!
 
 mims2 <- my.file[,c("time", "N2", "O2", "Ar", "Inlet.Temperature")]
-mims2$date_time <- parse_date_time(paste(year(mims2$time), "-", month(mims2$time), "-", day(mims2$time), " ", hour(mims2$time), sep = ""), orders = "Ymd H")
+mims2$date_time <- parse_date_time(paste(year(mims2$time), "-", month(mims2$time), "-", day(mims2$time), " ", hour(mims2$time), sep = ""), orders = "mdY HM")
 mims2 <- mims2[,-1]
 mims2 <- mims2 %>% group_by(date_time) %>% summarize_all(mean)
 
@@ -412,21 +413,50 @@ saveRDS(combined.df, file = "2024-01-19_combined_env_data_hourly.rds")
 
 combined.df <- readRDS(file = "2024-01-19_combined_env_data_hourly.rds")
 
-ggplot(data = combined.df) +
+combined.df.overlap <- combined.df[which(is.na(combined.df$o2_bio) == FALSE),]
+
+ggplot(data = combined.df.overlap) +
   geom_hline(yintercept = 0, alpha = 0.5) +
-  # geom_line(aes(x = Date.Time, y = aop), color = col1.aou, lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = Date.Time, y = aop, color = "AOP"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = Date.Time, y = o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  labs(x = "Date", y = expression("Oxygen Anomaly  [ "*mu*"M]")) +
+  # geom_line(aes(x = Date.Time, y = aop), color = col1.AOP, lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = -aop, color = "AOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = -o2_bio, color = "BOU"), lwd = 1, alpha = 0.7) +
+  labs(x = "Date", y = "Oxygen Anomaly [uM]") +
   theme_bw() +
-  scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
+  scale_x_datetime(date_breaks = "1 year", date_labels = "%Y", 
+                   # limits = c(min(combined.df$Date.Time), max(combined.df$Date.Time))
+                   ) +
   # theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(), panel.grid.minor.x = element_blank()) +
   theme(panel.grid = element_blank()) +
   ylim(c(-250,250)) +
-  scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP"), levels = c("[O2]bio", "AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou)) +
+  scale_color_manual(name = "", labels = factor(c("AOU", "BOU"), levels = c("BOU", "AOU")), guide = "legend", values = c("BOU" = col2.o2bio, "AOU" = col1.aou)) +
   # scale_x_datetime(date_breaks = "3 days", date_labels = "%b %d") +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
+
+date1 <- parse_date_time('2021-7-1', orders = "Ymd")
+date2 <- parse_date_time('2021-7-14', orders = "Ymd")
+
+ggplot(data = combined.df.overlap) +
+  geom_hline(yintercept = 0, alpha = 0.5) +
+  # geom_line(aes(x = Date.Time, y = aop), color = col1.AOP, lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = -aop, color = "AOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = -o2_bio, color = "BOU"), lwd = 1, alpha = 0.7) +
+  geom_line(data = combined.df.overlap[which(combined.df.overlap$Date.Time >= date1 & combined.df.overlap$Date.Time <= date2),], 
+            aes(x = Date.Time, y = -o2_bio, color = "Validation Dataset"), lwd = 1, alpha = 1) +
+  labs(x = "Date", y = "Oxygen Anomaly [uM]") +
+  theme_bw() +
+  scale_x_datetime(date_breaks = "1 year", date_labels = "%Y", 
+                   # limits = c(min(combined.df$Date.Time), max(combined.df$Date.Time))
+  ) +
+  # theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(), panel.grid.minor.x = element_blank()) +
+  theme(panel.grid = element_blank()) +
+  ylim(c(-250,250)) +
+  scale_color_manual(name = "", labels = factor(c("AOU", "BOU", "Validation Dataset"), levels = c("BOU", "AOU", "Validation Dataset")), guide = "legend", values = c("BOU" = col2.o2bio, "AOU" = col1.aou, "Validation Dataset" = col5.other)) +
+  # scale_x_datetime(date_breaks = "3 days", date_labels = "%b %d") +
+  theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
+  theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
+
 
 
 
@@ -436,6 +466,7 @@ combined.df <- readRDS(file = "2024-01-19_combined_env_data_hourly.rds")
 combined.df.select <- combined.df %>% drop_na(c(temp.cols, "o2_bio"))
 
 saveRDS(combined.df.select, file = "2024-01-19_combined.df.select.rds")
+combined.df.select <- readRDS("2024-01-19_combined.df.select.rds")
 
 sqrt(mean((combined.df.select$o2_bio - combined.df.select$aop)^2))
 
@@ -732,13 +763,13 @@ aop.cor.final <- predict(final.gbm, combined.df.test)
 
 plot.2b <- ggplot() +
   geom_hline(aes(yintercept = 0), alpha = 0.2) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = combined.df.test$aop, color = "AOP"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = combined.df.test.Date.Time, y = aop.cor.final, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = -combined.df.test$o2_bio, color = "BOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = -combined.df.test$aop, color = "AOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = combined.df.test.Date.Time, y = -aop.cor.final, color = "Estimated BOU"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Oxygen Anomaly [μM]") +
-  ylim(c(-120,70)) +
+  ylim(c(-70, 120)) +
   theme_bw() +
-  scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  scale_color_manual(name = "", labels = factor(c("AOU", "BOU", "Estimated BOU"), levels = c("BOU", "AOU", "Estimated BOU")), guide = "legend", values = c("BOU" = col2.o2bio, "AOU" = col1.aou, "Estimated BOU" = col5.other)) +
   scale_x_datetime(date_breaks = "3 days", date_labels = "%b %d") +
   # theme(panel.grid = element_blank()) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
@@ -825,15 +856,15 @@ t.test(combined.df$o2_bio, mu = 0)
 ## full corrected AOP time series (with uncorrected AOP and [o2]bio)
 fig4 <- ggplot(data = combined.df) +
   geom_hline(aes(yintercept = 0), alpha = 0.5) +
-  geom_line(aes(x = Date.Time, y = aop, color = "AOP"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = Date.Time, y = o2_bio, color = "[O2]bio"), lwd = 1, alpha = 0.7) +
-  geom_line(aes(x = Date.Time, y = aop.corrected, color = "Corrected AOP"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = aop, color = "AOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = o2_bio, color = "BOU"), lwd = 1, alpha = 0.7) +
+  geom_line(aes(x = Date.Time, y = aop.corrected, color = "Estimated BOU"), lwd = 1, alpha = 0.7) +
   labs(x = "Date", y = "Oxygen Anomaly [μM]") +
   theme_bw() +
   ylim(c(-250, 250)) +
   scale_x_datetime(date_breaks = "1 year", date_labels = "%Y") +
   # theme(panel.grid = element_blank()) +
-  scale_color_manual(name = "", labels = factor(c("[O2]bio", "AOP", "Corrected AOP"), levels = c("[O2]bio", "AOP", "Corrected AOP")), guide = "legend", values = c("[O2]bio" = col2.o2bio, "AOP" = col1.aou, "Corrected AOP" = col3.aoucor)) +
+  scale_color_manual(name = "", labels = factor(c("AOU", "BOU", "Estimated BOU"), levels = c("AOU", "BOU", "Estimated BOU")), guide = "legend", values = c("BOU" = col2.o2bio, "AOU" = col1.aou, "Estimated BOU" = col5.other)) +
   theme(axis.title = element_text(size = 14, face = "bold"), axis.text = element_text(size = 12)) +
   theme(legend.title = element_text(size = 14, face = "bold"), legend.text = element_text(size = 12)) 
 
